@@ -1,0 +1,7 @@
+*.thy~
+#*.thy#
+*.log
+*.cmi
+*.cmo
+*.lock
+*.ML~
