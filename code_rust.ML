@@ -46,10 +46,15 @@ val print_go_string =
         end;
   in quote o translate_string char end;
 
-
+(*block_enclose (prt1, prt2) prts outputs:
+	prt1
+		prts
+	prt2
+*)
 fun block_enclose (prt1, prt2) prts = (* Pretty.block_enclose (prt1, prt2) prts*)
   Pretty.chunks [Pretty.block (Pretty.fbreaks ((Pretty.unbreakable prt1) :: prts)), Pretty.unbreakable prt2];
 
+(*replace int num in .thy to Bigint.MkInt("num")*)
 fun print_go_numeral num = "Bigint.MkInt(\"" ^ signed_string_of_int num ^ "\")";
 
 val literals = Literals {
@@ -74,6 +79,7 @@ datatype go_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bool
 fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_syntax reserved
     args_num is_sum_type is_class_param is_constr (deresolve, deresolve_full) =
   let
+    (*Pretty-print formating helpers*)
     fun lookup_tyvar tyvars = lookup_var tyvars;
     fun intro_tyvars vs = intro_vars (map fst vs);
     val deresolve_const = deresolve o Constant;
@@ -109,14 +115,20 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
     (* wrap a statement into an immediately called function to make it an expression *)
     fun wrap_into_lambda tyvars typ body =
       block_enclose
-        (concat [str "func ()", print_go_typ tyvars typ, str "{"], str "}()") body
+        (concat [str "func ()", print_go_typ tyvars typ, str "{"], str "}()/*Tag: Handle Statement*/") body
     fun wrap_in_return t = oneline [str "return", t]
     fun wrap_if true = wrap_in_return
       | wrap_if false = I
 
+    (*print_func head body outputs:
+    fun head {
+      body
+    }
+    *)
     fun print_func head body = block_enclose
       (block [str "func ", head, str " {"], str "}")
       [body];
+    (*params: type val context, val context, function name, is generics, extras, function params, function param types, return type*)
     fun print_func_head tyvars vars const tvs extras params tys rty = let
       val args = params ~~ tys
       |> map (fn (param, ty) => let
@@ -127,8 +139,8 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
       |> enum "," "(" ")"
       val sym = case const of
         SOME name => (str o deresolve) name
-      | NONE => str ""
-      val func_head = concat (applify_constraints tyvars sym tvs :: [args, rty]);
+      | NONE => str "/*Tag: Anonymous Function*/"
+      val func_head = concat (applify_constraints tyvars sym tvs :: [args, block [rty, str "/*Print Function Head*/"]]);
       in func_head
     end;
 
@@ -141,6 +153,17 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
 
+      (*define constructor printer and format struct&eliminator
+			print_constructor m (SOME name) ((tname, []), tys) outputs:
+
+			struct tname {
+				A 'typeA
+			};
+			
+			func name['typeA any]{
+				return tname.A
+			}
+			*)
       fun print_constructor m type_name ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
@@ -150,11 +173,11 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
         val elim_body = if type_name = NONE
           then let
             val case_branch = block
-              [str "return ", (Pretty.block o commas) (map (fn (field,_) => str (p^"."^field)) named_fields)]
+              [str "return ", (Pretty.block o commas) (map (fn (field,_) => str (p^"."^field)) named_fields), str"/*Tag: Eliminator1*/"]
           in (*Pretty.chunks
             [oneline [str ((if null named_fields then "_ = " else m^" := ")^p^".("), typ , str ")"]
             ,*) case_branch end
-          else Pretty.block [oneline [str "return ", (Pretty.block o commas) (map (fn (field,_) => str (p^"."^field)) named_fields)]]
+          else Pretty.block [oneline [str "return ", (Pretty.block o commas) (map (fn (field,_) => str (p^"."^field)) named_fields), str"/*Tag: Eliminator2*/"]]
         val elim_name = mk_dest_name (case type_name of
             NONE => name
           | SOME name' => name')
@@ -165,12 +188,14 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
         val constr = oneline [block_enclose (concat [str "type", head, str "struct {"], str "}")
           fields]
         in (constr, eliminator) end
+      (*call print_constructor to output definition of single constructor & eliminator*)
       in if not allowed_infinite andalso length cos = 1 then case cos of
         [((name,_),tys)] => let
           val name = deresolve_const name
           val tname = deresolve_tyco tyco
           val (constr, dest) = print_constructor m (SOME name) ((tname, []), tys)
         in Pretty.chunks [constr, dest] end
+      (*output multi constructors & eliminators，and an "any" sum type to combine constructors*)
       else let
           val (constrs, destrs) = cos
             |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys))
@@ -182,14 +207,16 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
         in Pretty.chunks (comment :: any :: constrs @ destrs)  end
       end;
 
-
-    fun print_classrels [] ps = Pretty.block ps
+    (*print_classrels [self,super] ps outputs
+    ps.super
+    *)
+    fun print_classrels [] ps = Pretty.block (ps @ [str"/*Tag: Dict without Classrels*/"])
       | print_classrels rels ps = let
         val postfix = rels
           |> map (fn (self, super) => (Long_Name.base_name o deresolve_classrel) (self, super))
           |> rev
           |> String.concatWith "."
-        in block (ps @ [str ".", str postfix]) end
+        in block (ps @ [str ".", str postfix, str"/*Tag: Dict with Classrels*/"]) end
     fun print_dict tyvars (Dict (classrels, x)) =
       print_classrels classrels (print_plain_dict tyvars x)
     and print_plain_dict tyvars (Dict_Const (inst, args)) = let
@@ -256,7 +283,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
           val immediate_args = immediate
            |> map (print_go_expr const_syntax tyvars some_thm vars BR)
           val invocation = (if is_class_param orelse is_constr then immediate_args else dict_args @ immediate_args)
-           |> applify' I APP (wrap_type_conversion func_name)
+           |> applify' I APP (wrap_type_conversion (Pretty.block [str "/*Tag: Application Expr*/", func_name]))
            |> wrap_type_args
           val curried_args = curried
            |> map (enclose "(" ")" o single o print_go_expr const_syntax tyvars some_thm vars NOBR)
@@ -295,6 +322,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
                    [body]])])
         end
       in case pattern
+      (*const pattern*)
         of IConst c =>
           let
             val checks = concat
@@ -302,9 +330,10 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
             val body =  (if subps = []
               then print_go_term const_syntax tyvars some_thm vars NOBR term
               else print_clause tyvars some_thm vars p subps term)
-          in block_enclose ((spaced [str "if", checks, str "{"]), str "}")
-               [body]
+          in Pretty.block [block_enclose ((spaced [str "if", checks, str "{"]), str "}")
+               [body], str"/*Tag: Pattern Matching1*/"]
           end
+      (*constructor application pattern*)
         | _ `$ _ => (case Code_Thingol.unfold_const_app pattern of
             NONE => raise Fail "bad application in pattern match"
           | SOME (constr, args) => let
@@ -323,10 +352,11 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
             val vars = intro_vars [q] vars
             val wrapper = print_condition vars' conds (#sym constr, #typargs constr, #range constr, arg_names) p q target
             val subpatterns' = subpatterns @ subps
-          in wrapper (if subpatterns' = []
+          in Pretty.block [wrapper (if subpatterns' = []
             then print_go_term const_syntax tyvars some_thm vars' NOBR term
-            else print_clause tyvars some_thm vars' p subpatterns' term)
+            else print_clause tyvars some_thm vars' p subpatterns' term), str"/*Tag: Pattern Matching2*/"]
           end)
+      (*var pattern*)
         | IVar v => let
             val vars' = intro_vars (the_list v) vars
             val name_printed = case v of
@@ -339,7 +369,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
               then print_go_term const_syntax tyvars some_thm vars' NOBR term
               else print_clause tyvars some_thm vars' p subps term
           in
-            Pretty.chunks [binding, body]
+            Pretty.block [Pretty.chunks [binding, body], str"/*Tag: Pattern Matching3*/"]
           end
         | _ => raise Fail "bad term in pattern"
       end
