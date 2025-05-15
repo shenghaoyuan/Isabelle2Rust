@@ -730,7 +730,7 @@ fun serialize_go gen_stringer go_module undefineds infinite_types ctxt { module_
         print_module = print_module, print_stmt = print_stmt,
         lift_markup = K I } go_program
      |> curry (op @) includes
-     |> map (apfst (fn a => [a, "exported.go"]))
+     |> map (apfst (fn a => [a, "exported.rs.go"]))
 
     val is_single_module = length p = 1
   in (
@@ -759,8 +759,8 @@ val _ = Theory.setup
   (Code_Target.add_language
     (target, { serializer = serializer, literals = literals,
       check = { env_var = "ISABELLE_GOEXE",
-        make_destination = fn p => p + Path.explode "export.go",
-        make_command = fn p => "test -d export.go && cd export.go && isabelle go build ./"^p^" || isabelle go build ./export.go"},
+        make_destination = fn p => p + Path.explode "export.rs.go",
+        make_command = fn p => "test -d export.rs.go && cd export.rs.go && isabelle go build ./"^p^" || isabelle go build ./export.rs.go"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
     [(target, SOME (2, fn print_go_typ => fn fxy => fn [arg, rtyp] => let

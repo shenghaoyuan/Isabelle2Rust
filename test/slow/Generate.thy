@@ -7,7 +7,8 @@ imports
   "Candidates"
   "HOL-Library.AList_Mapping"
   "HOL-Library.Finite_Lattice"
-  "Go.Go_Setup"
+  (*"Go.Go_Setup"*)
+  "Rust.Rust_Setup"
 begin
 
 text \<open>

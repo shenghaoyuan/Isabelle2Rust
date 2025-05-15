@@ -1,6 +1,6 @@
 theory Rust_Setup
   imports "Main"
-    Go.Go_Setup (** refer *)
+    (*Go.Go_Setup*) (** refer *)
 begin
 
 ML_file \<open>code_rust.ML\<close>
@@ -50,7 +50,7 @@ code_printing
     (Rust) infix 4 "<"
 
 setup \<open>
-  fold Literal.add_code ["Go"]
+  fold Literal.add_code ["Rust"]
 \<close>
 
 
@@ -143,8 +143,8 @@ func Abs(a Int) Int {
 code_printing
   constant "0::integer" \<rightharpoonup> (Rust) "Bigint.MkInt(\"0\")"
 setup \<open>
-Numeral.add_code \<^const_name>\<open>Code_Numeral.Pos\<close> I Code_Printer.literal_numeral "Go"
-#> Numeral.add_code \<^const_name>\<open>Code_Numeral.Neg\<close> (~) Code_Printer.literal_numeral "Go"
+Numeral.add_code \<^const_name>\<open>Code_Numeral.Pos\<close> I Code_Printer.literal_numeral "Rust"
+#> Numeral.add_code \<^const_name>\<open>Code_Numeral.Neg\<close> (~) Code_Printer.literal_numeral "Rust"
 \<close>
 
 end

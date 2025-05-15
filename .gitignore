@@ -5,3 +5,5 @@
 *.cmo
 *.lock
 *.ML~
+*/test/quick/export
+*/mytest/quick/export
