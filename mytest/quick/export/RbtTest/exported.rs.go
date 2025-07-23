@@ -13,7 +13,7 @@ type Black struct {
 
 
 
-func Equal_colora (x0 Color, x1 Color) bool/*Print Function Head*/ {
+func equal_color (x0 Color, x1 Color) bool/*Print Function Head*/ {
   {
     if x0 == (Color(/*Tag: Application Expr*/Red{})) {
       if x1 == (Color(/*Tag: Application Expr*/Black{})) {
@@ -49,10 +49,10 @@ type Equal[a any] struct {
   Equala func(a, a) bool
 }
 
-func Equal_color () Equal[Color]/*Print Function Head*/ {
+func EqualColor () Equal[Color]/*Print Function Head*/ {
   return Equal[Color] {
     Equala: func /*Tag: Anonymous Function*/ (A Color, Aa Color) bool/*Print Function Head*/ {
-              return /*Tag: Application Expr*/Equal_colora(A, Aa);
+              return /*Tag: Application Expr*/equal_color(A, Aa);
             },
   }
 }
@@ -65,30 +65,30 @@ func Pair_dest[a, b any](p Prod[a, b])(a, b) {
   return  p.A, p.Aa /*Tag: Eliminator2*/;
 }
 
-func Eq[a any] (a_ Equal[a], aa a, b a) bool/*Print Function Head*/ {
+func eq[a any] (a_ Equal[a], aa a, b a) bool/*Print Function Head*/ {
   return /*Tag: Application Expr*/a_/*Tag: Dict without Classrels*/.Equala(aa, b);
 }
 
-func Equal_proda[a, b any] (a_ Equal[a], b_ Equal[b], x0 Prod[a, b], x1 Prod[a, b]) bool/*Print Function Head*/ {
+func equal_prod[a, b any] (a_ Equal[a], b_ Equal[b], x0 Prod[a, b], x1 Prod[a, b]) bool/*Print Function Head*/ {
   {
     _ = x0;
     x1b, x2a := Pair_dest(x0);
     _ = x1;
     y1a, y2a := Pair_dest(x1);
-    return /*Tag: Application Expr*/Eq[a](a_/*Tag: Dict without Classrels*/, x1b, y1a) && /*Tag: Application Expr*/Eq[b](b_/*Tag: Dict without Classrels*/, x2a, y2a);/*Tag: Pattern Matching2*//*Tag: Pattern Matching2*/
+    return /*Tag: Application Expr*/eq[a](a_/*Tag: Dict without Classrels*/, x1b, y1a) && /*Tag: Application Expr*/eq[b](b_/*Tag: Dict without Classrels*/, x2a, y2a);/*Tag: Pattern Matching2*//*Tag: Pattern Matching2*/
   };
   panic("match failed");
 }
 
-func Equal_prod[a, b any] (a_ Equal[a], b_ Equal[b]) Equal[Prod[a, b]]/*Print Function Head*/ {
+func EqualProd[a, b any] (a_ Equal[a], b_ Equal[b]) Equal[Prod[a, b]]/*Print Function Head*/ {
   return Equal[Prod[a, b]] {
     Equala: func /*Tag: Anonymous Function*/ (A Prod[a, b], Aa Prod[a, b]) bool/*Print Function Head*/ {
-              return /*Tag: Application Expr*/Equal_proda[a, b](a_/*Tag: Dict without Classrels*/, b_/*Tag: Dict without Classrels*/, A, Aa);
+              return /*Tag: Application Expr*/equal_prod[a, b](a_/*Tag: Dict without Classrels*/, b_/*Tag: Dict without Classrels*/, A, Aa);
             },
   }
 }
 
-func Equal_integer () Equal[Bigint.Int]/*Print Function Head*/ {
+func EqualInteger () Equal[Bigint.Int]/*Print Function Head*/ {
   return Equal[Bigint.Int] {
     Equala: func /*Tag: Anonymous Function*/ (A Bigint.Int, Aa Bigint.Int) bool/*Print Function Head*/ {
               return Bigint.Equal( A, Aa);
@@ -97,15 +97,15 @@ func Equal_integer () Equal[Bigint.Int]/*Print Function Head*/ {
 }
 
 type Ord[a any] struct {
-  Less_eq func(a, a) bool
+  LessEq func(a, a) bool
   Less func(a, a) bool
 }
 
-func Ord_integer () Ord[Bigint.Int]/*Print Function Head*/ {
+func OrdInteger () Ord[Bigint.Int]/*Print Function Head*/ {
   return Ord[Bigint.Int] {
-    Less_eq: func /*Tag: Anonymous Function*/ (A Bigint.Int, Aa Bigint.Int) bool/*Print Function Head*/ {
-               return Bigint.Less_eq( A, Aa);
-             },
+    LessEq: func /*Tag: Anonymous Function*/ (A Bigint.Int, Aa Bigint.Int) bool/*Print Function Head*/ {
+              return Bigint.Less_eq( A, Aa);
+            },
     Less: func /*Tag: Anonymous Function*/ (A Bigint.Int, Aa Bigint.Int) bool/*Print Function Head*/ {
             return Bigint.Less( A, Aa);
           },
@@ -113,32 +113,32 @@ func Ord_integer () Ord[Bigint.Int]/*Print Function Head*/ {
 }
 
 type Preorder[a any] struct {
-  Ord_preorder Ord[a]
+  OrdPreorder Ord[a]
 }
 
 type Order[a any] struct {
-  Preorder_order Preorder[a]
+  PreorderOrder Preorder[a]
 }
 
-func Preorder_integer () Preorder[Bigint.Int]/*Print Function Head*/ {
+func PreorderInteger () Preorder[Bigint.Int]/*Print Function Head*/ {
   return Preorder[Bigint.Int] {
-    Ord_preorder: Ord_integer()/*Tag: Dict without Classrels*/,
+    OrdPreorder: OrdInteger()/*Tag: Dict without Classrels*/,
   }
 }
 
-func Order_integer () Order[Bigint.Int]/*Print Function Head*/ {
+func OrderInteger () Order[Bigint.Int]/*Print Function Head*/ {
   return Order[Bigint.Int] {
-    Preorder_order: Preorder_integer()/*Tag: Dict without Classrels*/,
+    PreorderOrder: PreorderInteger()/*Tag: Dict without Classrels*/,
   }
 }
 
 type Linorder[a any] struct {
-  Order_linorder Order[a]
+  OrderLinorder Order[a]
 }
 
-func Linorder_integer () Linorder[Bigint.Int]/*Print Function Head*/ {
+func LinorderInteger () Linorder[Bigint.Int]/*Print Function Head*/ {
   return Linorder[Bigint.Int] {
-    Order_linorder: Order_integer()/*Tag: Dict without Classrels*/,
+    OrderLinorder: OrderInteger()/*Tag: Dict without Classrels*/,
   }
 }
 
@@ -188,7 +188,7 @@ func Node_dest[a any](p Node[a])(Tree[a], a, Tree[a]) {
 }
 
 // sum type which can be LT, EQ, GT
-type Cmp_val any;
+type CmpVal any;
 type LT struct {
 };
 type EQ struct {
@@ -199,24 +199,24 @@ type GT struct {
 
 
 
-func Cmp[a any] (a1_ Equal[a], a2_ Linorder[a], x a, y a) Cmp_val/*Print Function Head*/ {
-  target := /*Tag: Application Expr*/a2_.Order_linorder.Preorder_order.Ord_preorder/*Tag: Dict with Classrels*/.Less(x, y);
+func cmp[a any] (a1_ Equal[a], a2_ Linorder[a], x a, y a) CmpVal/*Print Function Head*/ {
+  target := /*Tag: Application Expr*/a2_.OrderLinorder.PreorderOrder.OrdPreorder/*Tag: Dict with Classrels*/.Less(x, y);
   {
     if target == (true) {
-      return Cmp_val(/*Tag: Application Expr*/LT{});
+      return CmpVal(/*Tag: Application Expr*/LT{});
     }/*Tag: Pattern Matching1*/
   };
   {
     if target == (false) {
-      targeu := /*Tag: Application Expr*/Eq[a](a1_/*Tag: Dict without Classrels*/, x, y);
+      targeu := /*Tag: Application Expr*/eq[a](a1_/*Tag: Dict without Classrels*/, x, y);
       {
         if targeu == (true) {
-          return Cmp_val(/*Tag: Application Expr*/EQ{});
+          return CmpVal(/*Tag: Application Expr*/EQ{});
         }/*Tag: Pattern Matching1*/
       };
       {
         if targeu == (false) {
-          return Cmp_val(/*Tag: Application Expr*/GT{});
+          return CmpVal(/*Tag: Application Expr*/GT{});
         }/*Tag: Pattern Matching1*/
       };
       panic("match failed");
@@ -225,7 +225,7 @@ func Cmp[a any] (a1_ Equal[a], a2_ Linorder[a], x a, y a) Cmp_val/*Print Functio
   panic("match failed");
 }
 
-func Paint[a any] (c Color, x1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func paint[a any] (c Color, x1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     if x1 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
       return Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{});
@@ -244,7 +244,7 @@ func Paint[a any] (c Color, x1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print
   panic("match failed");
 }
 
-func BaliR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func balir[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     t1b := t1;
     ac := aa;
@@ -415,7 +415,7 @@ func BaliR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
   panic("match failed");
 }
 
-func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func baldl[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     q, m := x0.(Node[Prod[a, Color]]);
     if m {
@@ -438,7 +438,7 @@ func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[P
         _ = p;
         bb, c := Pair_dest(p);
         if c == (Color(/*Tag: Application Expr*/Black{})) {
-          return /*Tag: Application Expr*/BaliR[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t2a, /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, t3b}));
+          return /*Tag: Application Expr*/balir[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t2a, /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, t3b}));
         }/*Tag: Pattern Matching2*/
       }/*Tag: Pattern Matching2*//*Tag: Pattern Matching3*/
     }/*Tag: Pattern Matching1*/
@@ -457,7 +457,7 @@ func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[P
           _ = q;
           bb, d := Pair_dest(q);
           if d == (Color(/*Tag: Application Expr*/Black{})) {
-            return /*Tag: Application Expr*/BaliR[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t2a, /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, t3b}));
+            return /*Tag: Application Expr*/balir[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t2a, /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, t3b}));
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*//*Tag: Pattern Matching3*/
       }/*Tag: Pattern Matching2*/
@@ -478,7 +478,7 @@ func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[P
             _ = p;
             ca, e := Pair_dest(p);
             if e == (Color(/*Tag: Application Expr*/Red{})) {
-              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Black{})}, t2a}), /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/BaliR[a](t3b, ca, /*Tag: Application Expr*/Paint[a](Color(/*Tag: Application Expr*/Red{}), t4a))});
+              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Black{})}, t2a}), /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/balir[a](t3b, ca, /*Tag: Application Expr*/paint[a](Color(/*Tag: Application Expr*/Red{}), t4a))});
             }/*Tag: Pattern Matching2*/
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*/
@@ -505,7 +505,7 @@ func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[P
               _ = q;
               ca, f := Pair_dest(q);
               if f == (Color(/*Tag: Application Expr*/Red{})) {
-                return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Black{})}, t2a}), /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/BaliR[a](t3b, ca, /*Tag: Application Expr*/Paint[a](Color(/*Tag: Application Expr*/Red{}), t4a))});
+                return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Black{})}, t2a}), /*Tag: Application Expr*/Prod[a, Color]{bb, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/balir[a](t3b, ca, /*Tag: Application Expr*/paint[a](Color(/*Tag: Application Expr*/Red{}), t4a))});
               }/*Tag: Pattern Matching2*/
             }/*Tag: Pattern Matching2*/
           }/*Tag: Pattern Matching2*/
@@ -626,7 +626,7 @@ func BaldL[a any] (x0 Tree[Prod[a, Color]], b a, t3 Tree[Prod[a, Color]]) Tree[P
   panic("match failed");
 }
 
-func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     if x0 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
       tb := t;
@@ -655,7 +655,7 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
           _ = q;
           ca, e := Pair_dest(q);
           if e == (Color(/*Tag: Application Expr*/Red{})) {
-            target := /*Tag: Application Expr*/Join[a](t2a, t3a);
+            target := /*Tag: Application Expr*/join[a](t2a, t3a);
             {
               if target == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
                 return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1a, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Red{})}, t4a})});
@@ -702,10 +702,10 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
           _ = q;
           ca, e := Pair_dest(q);
           if e == (Color(/*Tag: Application Expr*/Black{})) {
-            target := /*Tag: Application Expr*/Join[a](t2a, t3a);
+            target := /*Tag: Application Expr*/join[a](t2a, t3a);
             {
               if target == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
-                return /*Tag: Application Expr*/BaldL[a](t1a, ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, t4a}));
+                return /*Tag: Application Expr*/baldl[a](t1a, ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}), /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, t4a}));
               }/*Tag: Pattern Matching1*/
             };
             {
@@ -726,7 +726,7 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
                 _ = r;
                 b, f := Pair_dest(r);
                 if f == (Color(/*Tag: Application Expr*/Black{})) {
-                  return /*Tag: Application Expr*/BaldL[a](t1a, ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{u2, /*Tag: Application Expr*/Prod[a, Color]{b, Color(/*Tag: Application Expr*/Black{})}, u3}), /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, t4a}));
+                  return /*Tag: Application Expr*/baldl[a](t1a, ab, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{u2, /*Tag: Application Expr*/Prod[a, Color]{b, Color(/*Tag: Application Expr*/Black{})}, u3}), /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, t4a}));
                 }/*Tag: Pattern Matching2*/
               }/*Tag: Pattern Matching2*/
             };
@@ -749,7 +749,7 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
           _ = q;
           ab, d := Pair_dest(q);
           if d == (Color(/*Tag: Application Expr*/Red{})) {
-            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/Join[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), t2a), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, t3a});
+            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/join[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}), t2a), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, t3a});
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*/
       }/*Tag: Pattern Matching2*/
@@ -768,7 +768,7 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
           _ = q;
           vca, d := Pair_dest(q);
           if d == (Color(/*Tag: Application Expr*/Black{})) {
-            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1a, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/Join[a](t2a, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}))});
+            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1a, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/join[a](t2a, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}))});
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*/
       }/*Tag: Pattern Matching2*/
@@ -777,14 +777,14 @@ func Join[a any] (x0 Tree[Prod[a, Color]], t Tree[Prod[a, Color]]) Tree[Prod[a, 
   panic("match failed");
 }
 
-func Fold[a, b any] (f func(a) func(b) b, x1 List[a], s b) b/*Print Function Head*/ {
+func fold[a, b any] (f func(a) func(b) b, x1 List[a], s b) b/*Print Function Head*/ {
   {
     fb := f;
     q, m := x1.(Cons[a]);
     if m {
       xa, xsa := Cons_dest(q);
       sb := s;
-      return /*Tag: Application Expr*/Fold[a, b](fb, xsa, ((fb(xa))(sb)));/*Tag: Pattern Matching3*/
+      return /*Tag: Application Expr*/fold[a, b](fb, xsa, ((fb(xa))(sb)));/*Tag: Pattern Matching3*/
     }/*Tag: Pattern Matching2*//*Tag: Pattern Matching3*/
   };
   {
@@ -796,7 +796,7 @@ func Fold[a, b any] (f func(a) func(b) b, x1 List[a], s b) b/*Print Function Hea
   panic("match failed");
 }
 
-func BaliL[a any] (x0 Tree[Prod[a, Color]], c a, t4 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func balil[a any] (x0 Tree[Prod[a, Color]], c a, t4 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     q, m := x0.(Node[Prod[a, Color]]);
     if m {
@@ -1003,7 +1003,7 @@ func BaliL[a any] (x0 Tree[Prod[a, Color]], c a, t4 Tree[Prod[a, Color]]) Tree[P
   panic("match failed");
 }
 
-func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func baldr[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     t1b := t1;
     ac := aa;
@@ -1026,7 +1026,7 @@ func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
       if c == (Color(/*Tag: Application Expr*/Black{})) {
         ba := aa;
         if x2 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
-          return /*Tag: Application Expr*/BaliL[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1b, /*Tag: Application Expr*/Prod[a, Color]{ac, Color(/*Tag: Application Expr*/Red{})}, t2a}), ba, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}));
+          return /*Tag: Application Expr*/balil[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1b, /*Tag: Application Expr*/Prod[a, Color]{ac, Color(/*Tag: Application Expr*/Red{})}, t2a}), ba, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{}));
         }/*Tag: Pattern Matching1*//*Tag: Pattern Matching3*/
       }/*Tag: Pattern Matching2*/
     }/*Tag: Pattern Matching2*/
@@ -1045,7 +1045,7 @@ func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
           _ = q;
           vca, d := Pair_dest(q);
           if d == (Color(/*Tag: Application Expr*/Black{})) {
-            return /*Tag: Application Expr*/BaliL[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1b, /*Tag: Application Expr*/Prod[a, Color]{ac, Color(/*Tag: Application Expr*/Red{})}, t2a}), ba, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}));
+            return /*Tag: Application Expr*/balil[a](Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t1b, /*Tag: Application Expr*/Prod[a, Color]{ac, Color(/*Tag: Application Expr*/Red{})}, t2a}), ba, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba}));
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*//*Tag: Pattern Matching3*/
       }/*Tag: Pattern Matching2*/
@@ -1066,7 +1066,7 @@ func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
           if e == (Color(/*Tag: Application Expr*/Black{})) {
             ca := aa;
             if x2 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
-              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/BaliL[a](/*Tag: Application Expr*/Paint[a](Color(/*Tag: Application Expr*/Red{}), t1b), ac, t2a), /*Tag: Application Expr*/Prod[a, Color]{ba, Color(/*Tag: Application Expr*/Red{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t3a, /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})})});
+              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/balil[a](/*Tag: Application Expr*/paint[a](Color(/*Tag: Application Expr*/Red{}), t1b), ac, t2a), /*Tag: Application Expr*/Prod[a, Color]{ba, Color(/*Tag: Application Expr*/Red{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t3a, /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})})});
             }/*Tag: Pattern Matching1*//*Tag: Pattern Matching3*/
           }/*Tag: Pattern Matching2*/
         }/*Tag: Pattern Matching2*/
@@ -1093,7 +1093,7 @@ func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
               _ = s;
               vca, f := Pair_dest(s);
               if f == (Color(/*Tag: Application Expr*/Black{})) {
-                return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/BaliL[a](/*Tag: Application Expr*/Paint[a](Color(/*Tag: Application Expr*/Red{}), t1b), ac, t2a), /*Tag: Application Expr*/Prod[a, Color]{ba, Color(/*Tag: Application Expr*/Red{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t3a, /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba})})});
+                return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/balil[a](/*Tag: Application Expr*/paint[a](Color(/*Tag: Application Expr*/Red{}), t1b), ac, t2a), /*Tag: Application Expr*/Prod[a, Color]{ba, Color(/*Tag: Application Expr*/Red{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{t3a, /*Tag: Application Expr*/Prod[a, Color]{ca, Color(/*Tag: Application Expr*/Black{})}, Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{va, /*Tag: Application Expr*/Prod[a, Color]{vca, Color(/*Tag: Application Expr*/Black{})}, vba})})});
               }/*Tag: Pattern Matching2*/
             }/*Tag: Pattern Matching2*//*Tag: Pattern Matching3*/
           }/*Tag: Pattern Matching2*/
@@ -1214,7 +1214,7 @@ func BaldR[a any] (t1 Tree[Prod[a, Color]], aa a, x2 Tree[Prod[a, Color]]) Tree[
   panic("match failed");
 }
 
-func Equal_tree[a any] (a_ Equal[a], x0 Tree[a], x1 Tree[a]) bool/*Print Function Head*/ {
+func equal_tree[a any] (a_ Equal[a], x0 Tree[a], x1 Tree[a]) bool/*Print Function Head*/ {
   {
     if x0 == (Tree[a](/*Tag: Application Expr*/Leaf[a]{})) {
       _, m := x1.(Node[a]);
@@ -1238,7 +1238,7 @@ func Equal_tree[a any] (a_ Equal[a], x0 Tree[a], x1 Tree[a]) bool/*Print Functio
       q, m := x1.(Node[a]);
       if m {
         y21a, y22a, y23a := Node_dest(q);
-        return /*Tag: Application Expr*/Equal_tree[a](a_/*Tag: Dict without Classrels*/, x21a, y21a) && (/*Tag: Application Expr*/Eq[a](a_/*Tag: Dict without Classrels*/, x22a, y22a) && /*Tag: Application Expr*/Equal_tree[a](a_/*Tag: Dict without Classrels*/, x23a, y23a));
+        return /*Tag: Application Expr*/equal_tree[a](a_/*Tag: Dict without Classrels*/, x21a, y21a) && (/*Tag: Application Expr*/eq[a](a_/*Tag: Dict without Classrels*/, x22a, y22a) && /*Tag: Application Expr*/equal_tree[a](a_/*Tag: Dict without Classrels*/, x23a, y23a));
       }/*Tag: Pattern Matching2*/
     }/*Tag: Pattern Matching2*/
   };
@@ -1252,7 +1252,7 @@ func Equal_tree[a any] (a_ Equal[a], x0 Tree[a], x1 Tree[a]) bool/*Print Functio
   panic("match failed");
 }
 
-func Colora[a any] (x0 Tree[Prod[a, Color]]) Color/*Print Function Head*/ {
+func color[a any] (x0 Tree[Prod[a, Color]]) Color/*Print Function Head*/ {
   {
     if x0 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
       return Color(/*Tag: Application Expr*/Black{});
@@ -1270,7 +1270,7 @@ func Colora[a any] (x0 Tree[Prod[a, Color]]) Color/*Print Function Head*/ {
   panic("match failed");
 }
 
-func Del[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func del[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     if xa1 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
       return Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{});
@@ -1283,39 +1283,39 @@ func Del[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) T
       la, p, ra := Node_dest(q);
       _ = p;
       ab, _ := Pair_dest(p);
-      target := /*Tag: Application Expr*/Cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
+      target := /*Tag: Application Expr*/cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
       {
-        if target == (Cmp_val(/*Tag: Application Expr*/LT{})) {
-          targeu := ! /*Tag: Application Expr*/Equal_tree[Prod[a, Color]](Equal_prod[a, Color](a1_/*Tag: Dict without Classrels*/, Equal_color()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, la, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) && /*Tag: Application Expr*/Equal_colora(/*Tag: Application Expr*/Colora[a](la), Color(/*Tag: Application Expr*/Black{}));
+        if target == (CmpVal(/*Tag: Application Expr*/LT{})) {
+          targeu := ! /*Tag: Application Expr*/equal_tree[Prod[a, Color]](EqualProd[a, Color](a1_/*Tag: Dict without Classrels*/, EqualColor()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, la, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) && /*Tag: Application Expr*/equal_color(/*Tag: Application Expr*/color[a](la), Color(/*Tag: Application Expr*/Black{}));
           {
             if targeu == (true) {
-              return /*Tag: Application Expr*/BaldL[a](/*Tag: Application Expr*/Del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), ab, ra);
+              return /*Tag: Application Expr*/baldl[a](/*Tag: Application Expr*/del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), ab, ra);
             }/*Tag: Pattern Matching1*/
           };
           {
             if targeu == (false) {
-              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/Del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, ra});
+              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, ra});
             }/*Tag: Pattern Matching1*/
           };
           panic("match failed");
         }/*Tag: Pattern Matching1*/
       };
       {
-        if target == (Cmp_val(/*Tag: Application Expr*/EQ{})) {
-          return /*Tag: Application Expr*/Join[a](la, ra);
+        if target == (CmpVal(/*Tag: Application Expr*/EQ{})) {
+          return /*Tag: Application Expr*/join[a](la, ra);
         }/*Tag: Pattern Matching1*/
       };
       {
-        if target == (Cmp_val(/*Tag: Application Expr*/GT{})) {
-          targeu := ! /*Tag: Application Expr*/Equal_tree[Prod[a, Color]](Equal_prod[a, Color](a1_/*Tag: Dict without Classrels*/, Equal_color()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, ra, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) && /*Tag: Application Expr*/Equal_colora(/*Tag: Application Expr*/Colora[a](ra), Color(/*Tag: Application Expr*/Black{}));
+        if target == (CmpVal(/*Tag: Application Expr*/GT{})) {
+          targeu := ! /*Tag: Application Expr*/equal_tree[Prod[a, Color]](EqualProd[a, Color](a1_/*Tag: Dict without Classrels*/, EqualColor()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, ra, Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) && /*Tag: Application Expr*/equal_color(/*Tag: Application Expr*/color[a](ra), Color(/*Tag: Application Expr*/Black{}));
           {
             if targeu == (true) {
-              return /*Tag: Application Expr*/BaldR[a](la, ab, /*Tag: Application Expr*/Del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra));
+              return /*Tag: Application Expr*/baldr[a](la, ab, /*Tag: Application Expr*/del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra));
             }/*Tag: Pattern Matching1*/
           };
           {
             if targeu == (false) {
-              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/Del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra)});
+              return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra)});
             }/*Tag: Pattern Matching1*/
           };
           panic("match failed");
@@ -1327,7 +1327,7 @@ func Del[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) T
   panic("match failed");
 }
 
-func Ins[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func ins[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
   {
     xb := x;
     if xa1 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
@@ -1342,20 +1342,20 @@ func Ins[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) T
       _ = p;
       ab, c := Pair_dest(p);
       if c == (Color(/*Tag: Application Expr*/Black{})) {
-        target := /*Tag: Application Expr*/Cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
+        target := /*Tag: Application Expr*/cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/LT{})) {
-            return /*Tag: Application Expr*/BaliL[a](/*Tag: Application Expr*/Ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), ab, ra);
+          if target == (CmpVal(/*Tag: Application Expr*/LT{})) {
+            return /*Tag: Application Expr*/balil[a](/*Tag: Application Expr*/ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), ab, ra);
           }/*Tag: Pattern Matching1*/
         };
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/EQ{})) {
+          if target == (CmpVal(/*Tag: Application Expr*/EQ{})) {
             return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Black{})}, ra});
           }/*Tag: Pattern Matching1*/
         };
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/GT{})) {
-            return /*Tag: Application Expr*/BaliR[a](la, ab, /*Tag: Application Expr*/Ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra));
+          if target == (CmpVal(/*Tag: Application Expr*/GT{})) {
+            return /*Tag: Application Expr*/balir[a](la, ab, /*Tag: Application Expr*/ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra));
           }/*Tag: Pattern Matching1*/
         };
         panic("match failed");
@@ -1370,20 +1370,20 @@ func Ins[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) T
       _ = p;
       ab, c := Pair_dest(p);
       if c == (Color(/*Tag: Application Expr*/Red{})) {
-        target := /*Tag: Application Expr*/Cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
+        target := /*Tag: Application Expr*/cmp[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ab);
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/LT{})) {
-            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/Ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, ra});
+          if target == (CmpVal(/*Tag: Application Expr*/LT{})) {
+            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{/*Tag: Application Expr*/ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, la), /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, ra});
           }/*Tag: Pattern Matching1*/
         };
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/EQ{})) {
+          if target == (CmpVal(/*Tag: Application Expr*/EQ{})) {
             return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, ra});
           }/*Tag: Pattern Matching1*/
         };
         {
-          if target == (Cmp_val(/*Tag: Application Expr*/GT{})) {
-            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/Ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra)});
+          if target == (CmpVal(/*Tag: Application Expr*/GT{})) {
+            return Tree[Prod[a, Color]](/*Tag: Application Expr*/Node[Prod[a, Color]]{la, /*Tag: Application Expr*/Prod[a, Color]{ab, Color(/*Tag: Application Expr*/Red{})}, /*Tag: Application Expr*/ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, xb, ra)});
           }/*Tag: Pattern Matching1*/
         };
         panic("match failed");
@@ -1393,23 +1393,23 @@ func Ins[a any] (a1_ Equal[a], a2_ Linorder[a], x a, xa1 Tree[Prod[a, Color]]) T
   panic("match failed");
 }
 
-func Insert[a any] (a1_ Equal[a], a2_ Linorder[a], x a, t Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
-  return /*Tag: Application Expr*/Paint[a](Color(/*Tag: Application Expr*/Black{}), /*Tag: Application Expr*/Ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, x, t));
+func insert[a any] (a1_ Equal[a], a2_ Linorder[a], x a, t Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+  return /*Tag: Application Expr*/paint[a](Color(/*Tag: Application Expr*/Black{}), /*Tag: Application Expr*/ins[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, x, t));
 }
 
-func Empty[a any] () Tree[Prod[a, Color]]/*Print Function Head*/ {
+func empty[a any] () Tree[Prod[a, Color]]/*Print Function Head*/ {
   return Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{});
 }
 
-func T1 () Tree[Prod[Bigint.Int, Color]]/*Print Function Head*/ {
-  return /*Tag: Application Expr*/Fold[Bigint.Int, Tree[Prod[Bigint.Int, Color]]](func /*Tag: Anonymous Function*/ (a Bigint.Int) func(Tree[Prod[Bigint.Int, Color]]) Tree[Prod[Bigint.Int, Color]]/*Print Function Head*/ {
+func t1 () Tree[Prod[Bigint.Int, Color]]/*Print Function Head*/ {
+  return /*Tag: Application Expr*/fold[Bigint.Int, Tree[Prod[Bigint.Int, Color]]](func /*Tag: Anonymous Function*/ (a Bigint.Int) func(Tree[Prod[Bigint.Int, Color]]) Tree[Prod[Bigint.Int, Color]]/*Print Function Head*/ {
     return func /*Tag: Anonymous Function*/ (b Tree[Prod[Bigint.Int, Color]]) Tree[Prod[Bigint.Int, Color]]/*Print Function Head*/ {
-             return /*Tag: Application Expr*/Insert[Bigint.Int](Equal_integer()/*Tag: Dict without Classrels*/, Linorder_integer()/*Tag: Dict without Classrels*/, a, b);
+             return /*Tag: Application Expr*/insert[Bigint.Int](EqualInteger()/*Tag: Dict without Classrels*/, LinorderInteger()/*Tag: Dict without Classrels*/, a, b);
            };
-  }, List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("1"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("2"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("3"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("4"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("5"), List[Bigint.Int](/*Tag: Application Expr*/Nil[Bigint.Int]{})})})})})}), /*Tag: Application Expr*/Empty[Bigint.Int]());
+  }, List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("1"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("2"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("3"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("4"), List[Bigint.Int](/*Tag: Application Expr*/Cons[Bigint.Int]{Bigint.MkInt("5"), List[Bigint.Int](/*Tag: Application Expr*/Nil[Bigint.Int]{})})})})})}), /*Tag: Application Expr*/empty[Bigint.Int]());
 }
 
-func Invc[a any] (x0 Tree[Prod[a, Color]]) bool/*Print Function Head*/ {
+func invc[a any] (x0 Tree[Prod[a, Color]]) bool/*Print Function Head*/ {
   {
     if x0 == (Tree[Prod[a, Color]](/*Tag: Application Expr*/Leaf[Prod[a, Color]]{})) {
       return true;
@@ -1421,28 +1421,28 @@ func Invc[a any] (x0 Tree[Prod[a, Color]]) bool/*Print Function Head*/ {
       la, p, ra := Node_dest(q);
       _ = p;
       _, ca := Pair_dest(p);
-      return (!(/*Tag: Application Expr*/Equal_colora(ca, Color(/*Tag: Application Expr*/Red{}))) || /*Tag: Application Expr*/Equal_colora(/*Tag: Application Expr*/Colora[a](la), Color(/*Tag: Application Expr*/Black{})) && /*Tag: Application Expr*/Equal_colora(/*Tag: Application Expr*/Colora[a](ra), Color(/*Tag: Application Expr*/Black{}))) && (/*Tag: Application Expr*/Invc[a](la) && /*Tag: Application Expr*/Invc[a](ra));/*Tag: Pattern Matching2*/
+      return (!(/*Tag: Application Expr*/equal_color(ca, Color(/*Tag: Application Expr*/Red{}))) || /*Tag: Application Expr*/equal_color(/*Tag: Application Expr*/color[a](la), Color(/*Tag: Application Expr*/Black{})) && /*Tag: Application Expr*/equal_color(/*Tag: Application Expr*/color[a](ra), Color(/*Tag: Application Expr*/Black{}))) && (/*Tag: Application Expr*/invc[a](la) && /*Tag: Application Expr*/invc[a](ra));/*Tag: Pattern Matching2*/
     }/*Tag: Pattern Matching2*/
   };
   panic("match failed");
 }
 
-func Delete_list[a any] (a1_ Equal[a], a2_ Linorder[a], xs List[a], aa Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
-  return /*Tag: Application Expr*/Fold[a, Tree[Prod[a, Color]]](func /*Tag: Anonymous Function*/ (ab a) func(Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func delete_list[a any] (a1_ Equal[a], a2_ Linorder[a], xs List[a], aa Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+  return /*Tag: Application Expr*/fold[a, Tree[Prod[a, Color]]](func /*Tag: Anonymous Function*/ (ab a) func(Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
                           return func /*Tag: Anonymous Function*/ (b Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
-                                   return /*Tag: Application Expr*/Del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, ab, b);
+                                   return /*Tag: Application Expr*/del[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, ab, b);
                                  };
                         }, xs, aa);
 }
 
-func Trees_equal[a any] (a_ Equal[a], aa Tree[Prod[a, Color]], b Tree[Prod[a, Color]]) bool/*Print Function Head*/ {
-  return /*Tag: Application Expr*/Equal_tree[Prod[a, Color]](Equal_prod[a, Color](a_/*Tag: Dict without Classrels*/, Equal_color()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, aa, b);
+func trees_equal[a any] (a_ Equal[a], aa Tree[Prod[a, Color]], b Tree[Prod[a, Color]]) bool/*Print Function Head*/ {
+  return /*Tag: Application Expr*/equal_tree[Prod[a, Color]](EqualProd[a, Color](a_/*Tag: Dict without Classrels*/, EqualColor()/*Tag: Dict without Classrels*/)/*Tag: Dict without Classrels*/, aa, b);
 }
 
-func Tree_from_list[a any] (a1_ Equal[a], a2_ Linorder[a], xs List[a]) Tree[Prod[a, Color]]/*Print Function Head*/ {
-  return /*Tag: Application Expr*/Fold[a, Tree[Prod[a, Color]]](func /*Tag: Anonymous Function*/ (aa a) func(Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+func tree_from_list[a any] (a1_ Equal[a], a2_ Linorder[a], xs List[a]) Tree[Prod[a, Color]]/*Print Function Head*/ {
+  return /*Tag: Application Expr*/fold[a, Tree[Prod[a, Color]]](func /*Tag: Anonymous Function*/ (aa a) func(Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
                           return func /*Tag: Anonymous Function*/ (b Tree[Prod[a, Color]]) Tree[Prod[a, Color]]/*Print Function Head*/ {
-                                   return /*Tag: Application Expr*/Insert[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, aa, b);
+                                   return /*Tag: Application Expr*/insert[a](a1_/*Tag: Dict without Classrels*/, a2_/*Tag: Dict without Classrels*/, aa, b);
                                  };
-                        }, xs, /*Tag: Application Expr*/Empty[a]());
+                        }, xs, /*Tag: Application Expr*/empty[a]());
 }

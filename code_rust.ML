@@ -626,26 +626,89 @@ fun variant_capitalize s ctxt =
     |> Name.variant (implode s_lower)
   end;
 
+fun to_allowed_token cs = 
+  let  
+    fun tat [] = []
+      | tat (c :: cs) = 
+        if (((c >= #"!") andalso (c <= #"/")) orelse 
+            ((c >= #":") andalso (c <= #"@")) orelse
+            ((c >= #"[") andalso (c <= #"^")) orelse
+            ((c >= #"{") andalso (c <= #"~")) orelse 
+            (c = #"`"))  
+        then
+          ("d" ^ Int.toString (Char.ord c)) :: tat cs
+        else
+          String.str c :: tat cs
+  in String.explode (String.concat (tat cs)) end;
+     
+
+fun to_snake_case cs =
+  let
+    fun is_upper c = Char.isUpper c;
+    fun is_lower c = Char.isLower c;
+    fun aux [] = []
+      | aux [c] = [Char.toLower c]
+      | aux (c1 :: c2 :: cs) =
+          if is_upper c1 andalso is_lower c2 then
+            #"_" :: Char.toLower c1 :: aux (c2 :: cs)
+          else if is_upper c1 andalso is_upper c2 then
+            Char.toLower c1 :: aux (c2 :: cs)
+          else
+            Char.toLower c1 :: aux (c2 :: cs)
+    fun auxx [] = []
+      | auxx [c] = [Char.toLower c]
+      | auxx (c :: cs) = Char.toLower c :: aux cs
+  in auxx (to_allowed_token cs) end;
+
+fun variant_snake_case s ctxt =
+  let
+    val cs = String.explode s;
+    val s_snake = to_snake_case cs
+  in
+    ctxt |> Name.variant (String.implode s_snake)
+  end;
+
+fun to_upper_camel_case cs =
+  let
+    fun is_upper c = Char.isUpper c;
+    fun is_lower c = Char.isLower c;
+    fun aux [] = []
+      | aux [c] = [c]
+      | aux (c1 :: c2 :: cs) =
+        if (c1 = #"_") then Char.toUpper c2 :: aux cs
+        else c1 :: aux (c2 :: cs)
+    fun auxx [] = []
+      | auxx [c] = [Char.toUpper c]
+      | auxx (c :: cs) = Char.toUpper c :: aux cs
+  in auxx (to_allowed_token cs) end;
+
+fun variant_upper_camel_case s ctxt =
+  let
+    val cs = String.explode s;
+    val s_camel = to_upper_camel_case cs
+  in
+    ctxt |> Name.variant (String.implode s_camel)
+  end;
+
 fun go_program_of_program ctxt module_name reserved identifiers exports program =
   let
-    val variant = variant_capitalize
     fun namify_module name_fragment ((nsp_class, nsp_object), nsp_common) =
       let
         val declare = Name.declare name_fragment;
       in (name_fragment, ((declare nsp_class, declare nsp_object), declare nsp_common)) end;
-    fun namify_common base ((nsp_class, nsp_object), nsp_common) =
+    fun namify_common variant base ((nsp_class, nsp_object), nsp_common) =
       let
         val (base', nsp_common') = variant base nsp_common
       in
         (base', ((Name.declare base' nsp_class, Name.declare base' nsp_object), nsp_common'))
       end;
-    fun namify_stmt (Code_Thingol.Fun _) = namify_common
-      | namify_stmt (Code_Thingol.Datatype _) = namify_common
-      | namify_stmt (Code_Thingol.Datatypecons _) = namify_common
-      | namify_stmt (Code_Thingol.Class _) = namify_common
-      | namify_stmt (Code_Thingol.Classrel _) = namify_common
-      | namify_stmt (Code_Thingol.Classparam _) = namify_common
-      | namify_stmt (Code_Thingol.Classinst _) = namify_common;
+    fun namify_stmt (Code_Thingol.Fun _) = namify_common variant_snake_case
+      | namify_stmt (Code_Thingol.Datatype _) = namify_common variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Datatypecons _) = namify_common variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Class _) = namify_common variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classrel _) = namify_common variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classparam _) = namify_common variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classinst _) = namify_common variant_upper_camel_case;
 
     fun modify_stmt (_, (_, Code_Thingol.Fun (_, SOME _))) = NONE
       | modify_stmt (_, (export, Code_Thingol.Fun (x, _))) = SOME (export, Fun x)
@@ -767,11 +830,18 @@ val _ = Theory.setup
         val head = applify "(" ")" (print_go_typ fxy) NOBR (str "func") [arg];
       in concat [head, print_go_typ fxy rtyp] end)
     )]))
+    (*add rust reserved words*)
   #> fold (Code_Target.add_reserved target) [
-      "any", "break", "default", "func", "interface", "select", "case", "defer",
-      "go", "map", "struct", "chan", "else", "goto", "package", "switch",
-      "const", "fallthrough", "if", "range", "type", "continue", "for",
-      "import", "return", "var"
+      "any", (*"break",*) "default", "func", "interface", "select", "case", "defer",
+      "go", "map", (*"struct",*) "chan", (*"else",*) "goto", "package", "switch",
+      (*"const",*) "fallthrough", (*"if",*) "range", (*"type",*) (*"continue",*) (*"for",*)
+      "import", (*"return",*) "var",
+      "as", "use", "extern crate", "break", "const", "continue", "crate", "else", "if",
+      "if let", "enum", "extern", "false", "fn", "for", "impl", "in", "let", "loop",
+      "match", "mod", "move", "mut", "pub", "ref", "return", "Self", "self", "static",
+      "struct", "super", "trait", "true", "type", "unsafe", "where", "while",
+      "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof", "override",
+      "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual", "yield"
     ]);
 
 
