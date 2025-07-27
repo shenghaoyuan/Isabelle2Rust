@@ -11,24 +11,24 @@ code_identifier
 | code_module Code_Numeral \<rightharpoonup> (Rust) Arith
 
 code_printing
-  constant Code.abort \<rightharpoonup>
-    (Rust) "panic( _ )"
+  constant Code.abort \<rightharpoonup> (Rust) "panic!( _ )"
 
 (* Bools *)
+subsection \<open>bool and logic connectives\<close>
 code_printing
   type_constructor bool \<rightharpoonup> (Rust) "bool"
 | constant "False::bool" \<rightharpoonup> (Rust) "false"
 | constant "True::bool" \<rightharpoonup> (Rust) "true"
 
-code_printing
-  constant HOL.Not \<rightharpoonup> (Rust) "'! _"
+|  constant HOL.Not \<rightharpoonup> (Rust) "(!(_))"
 | constant HOL.conj \<rightharpoonup> (Rust) infixl 1 "&&"
 | constant HOL.disj \<rightharpoonup> (Rust) infixl 0 "||"
-| constant HOL.implies \<rightharpoonup> (Rust) "!('!((_)) || (_))"
-| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Rust) infix 4 "=="
+| constant HOL.implies \<rightharpoonup> (Rust) "((!(_)) || (_))"
+| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Rust) "(_ == _)"
+(*constant HOL.Not \<rightharpoonup> (Rust) "'! _"*)
+(*| constant HOL.implies \<rightharpoonup> (Rust) "!('!((_)) || (_))"*)
+(*| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Rust) infix 4 "=="*)
 
-
-(* Strings *)
 
 (* definitions to make these functions available *)
 definition "go_private_map_list" where
@@ -37,24 +37,36 @@ definition "go_private_fold_list" where
   "go_private_fold_list f a b = fold f a b"
 
 
+subsection \<open>String\<close>
+(*infix ??>*)
 code_printing
-  type_constructor String.literal \<rightharpoonup> (Rust) "string"
-| constant "STR ''''" \<rightharpoonup> (Rust) "\"\""
+  type_constructor String.literal \<rightharpoonup> (Rust) "String"
+(*| constant "STR ''''" \<rightharpoonup> (Rust) "\"\""*)
+| constant "STR ''''" \<rightharpoonup> (Rust) "String::new()"
 | constant "Groups.plus_class.plus :: String.literal \<Rightarrow> _ \<Rightarrow> _" \<rightharpoonup>
-    (Rust) infix 6 "+"
+    (Rust) infix 6 "((_).clone() + (_).as_str())"                             (*(Rust) infix 6 "+"*)
 | constant "HOL.equal :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-    (Rust) infix 4 "=="
+    (Rust) infix 4 "(_ == _)"
 | constant "(\<le>) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-    (Rust) infix 4 "<="
+    (Rust) infix 4 "(_ <= _)"
 | constant "(<) :: String.literal \<Rightarrow> String.literal \<Rightarrow> bool" \<rightharpoonup>
-    (Rust) infix 4 "<"
+    (Rust) infix 4 "(_ < _)"
 
 setup \<open>
   fold Literal.add_code ["Rust"]
 \<close>
 
 
-(* Integers via big/math *)
+subsection \<open> num-bigint \<close>
+
+text \<open>
+include crates：
+    num-bigint  = "0.4"
+    num-integer = "0.1"
+    num-traits  = "0.2"
+\<close>
+
+(* Integers via num-bigint *)
 code_printing
   code_module "Bigint" \<rightharpoonup> (Rust) \<open>
 package Bigint
