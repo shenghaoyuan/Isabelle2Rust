@@ -31,9 +31,10 @@ fun range_of_head t =
   case fst (Code_Thingol.unfold_app t) of
     IConst {range, ...} => range
 
-val print_go_string =
+val print_rust_string =
   let
-    fun unicode i = "\\u" ^ align_right "0" 4 (Int.fmt StringCvt.HEX i)
+    (*fun unicode i = "\\u" ^ align_right "0" 4 (Int.fmt StringCvt.HEX i)*)
+    fun unicode i = "\\u{" ^ Int.toString i ^ "}"
     fun char "\"" = "\\\""
       | char "\\" = "\\\\"
       | char c =
@@ -41,33 +42,40 @@ val print_go_string =
          in if i < 32 orelse i > 126
           then unicode i
           else if i >= 128
-          then error "non-ASCII byte in Go string literal"
+          then error "non-ASCII byte in Rust string literal"
           else c
         end;
   in quote o translate_string char end;
 
 (*block_enclose (prt1, prt2) prts outputs:
-	prt1
+	prt1{
 		prts
-	prt2
+	}prt2
 *)
 fun block_enclose (prt1, prt2) prts = (* Pretty.block_enclose (prt1, prt2) prts*)
   Pretty.chunks [Pretty.block (Pretty.fbreaks ((Pretty.unbreakable prt1) :: prts)), Pretty.unbreakable prt2];
 
+
+(* Lu: the int type in Isabelle has unlimited precision, requiring additional libraries to simulate this behavior.*)
 (*replace int num in .thy to Bigint.MkInt("num")*)
-fun print_go_numeral num = "Bigint.MkInt(\"" ^ signed_string_of_int num ^ "\")";
+fun print_go_numeral num =  
+  "BigInt::parse_bytes(b\"" ^ signed_string_of_int num ^ "\", 10).unwrap()"
+(*"Bigint.MkInt(\"" ^ signed_string_of_int num ^ "\")";*)
 
 val literals = Literals {
-  literal_string = print_go_string,
+  literal_string = print_rust_string,
   literal_numeral = print_go_numeral,
-  literal_list = enum "," "[" "]",
-  infix_cons = (6, "<no infix cons operator in  go>") (* TODO: this will go wrong if ever used *)
+  literal_list = enum "," "vec![" "]", (*"[" "]", *)
+  infix_cons = (6, "::") (* TODO: this will go wrong if ever used *)
 };
-
+(* Lu: Go does not have a cons operator, Haskell has : operator, like this: 1 : [2, 3, 4]) *)
+(* Rust allows using :: to construct a list, 
+    but it's generally recommended to use vec![...] instead. *)
 
 
 (* the subset of thingol we actually need for Go *)
-datatype go_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bool)) list
+(* Lu: not sure how to rewrite this part*)
+datatype rust_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bool)) list
   | Datatype of vname list * ((string * vname list) * itype list) list
   | Class of (vname * ((class * class) list * (string * itype) list))
   | Datatypecons of string
@@ -76,7 +84,7 @@ datatype go_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bool
         inst_params: ((string * (const * int)) * (thm * bool)) list,
         superinst_params: ((string * (const * int)) * (thm * bool)) list };
 
-fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_syntax reserved
+fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syntax reserved
     args_num is_sum_type is_class_param is_constr (deresolve, deresolve_full) =
   let
     (*Pretty-print formating helpers*)
@@ -384,7 +392,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
         val body = assignment
            :: map (fn (pattern,term) =>
                wrap_new_scope (print_clause tyvars some_thm vars p [(target_var, pattern)] term))
-           clauses @ [oneline [str "panic(\"match failed\")"]]
+           clauses @ [oneline [str "panic!(\"match failed\")"]]
       in if is_stmt
         then Pretty.chunks body
         else wrap_into_lambda tyvars rtyp body
@@ -395,7 +403,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
           (* the arguments may use otherwise-unused variables, so just print somewhere to make Go happy *)
           |> map (print_go_expr const_syntax tyvars some_thm vars fxy)
           |> map (fn p => oneline [ str "_ = ", p])
-          |> curry (op @) [ str ("panic(\"encountered undefined function: \" + "^print_go_string (Code_Symbol.default_base (#sym const))^")") ]
+          |> curry (op @) [ str ("panic!(\"encountered undefined function: \" + "^print_rust_string (Code_Symbol.default_base (#sym const))^")") ]
           |> Pretty.chunks
        else wrap_if is_stmt (gen_print_app (print_app_expr const_syntax tyvars)
         (print_go_expr const_syntax tyvars) const_syntax some_thm vars fxy app)
@@ -422,8 +430,8 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
         val body = print_go_term const_syntax tyvars some_thm vars' fxy t
       in wrap_if is_stmt (print_func func_head body) end
     | ICase { clauses = [], ... } => let
-      val _ = warning "empty case statement; generating call to panic() ...";
-      in str "panic(\"empty case\");" end
+      val _ = warning "empty case statement; generating call to panic!() ...";
+      in str "panic!(\"empty case\");" end
     (* this is a let-binding, represented as a case *)
     | ICase (cases as { clauses = [_], ...}) =>
       let
@@ -478,9 +486,9 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
             val vars = intro_vars params tyvars;
         val dict_args = print_dict_args tyvars vs
         val head = print_func_head tyvars vars ((SOME o Constant) const) (map fst vs) dict_args (map SOME params) tys (print_go_typ tyvars ty');
-        val _ = warning ("you appear to have defined a function "^const^" with no body; generating a call to panic() ...")
+        val _ = warning ("you appear to have defined a function "^const^" with no body; generating a call to panic!() ...")
       in
-        print_func head (oneline [str ("panic("^print_go_string const^")")])
+        print_func head (oneline [str ("panic!("^print_rust_string const^")")])
       end
     | print_go_func const_syntax reserved const vs ty eqs =
       let
@@ -531,7 +539,7 @@ fun print_go_stmt gen_stringer undefineds infinite_types tyco_syntax const_synta
           print_func head (print_rhs true vars2 (hd eqs))
         else
           print_func head (Pretty.chunks
-            (map print_fun_clause eqs @ [oneline [str "panic(\"match failed\")"]]))
+            (map print_fun_clause eqs @ [oneline [str "panic!(\"match failed\")"]]))
       end;
     fun print_typeclass tyvars sym ((target, (super, params))) =
       let
@@ -770,7 +778,7 @@ fun serialize_go gen_stringer go_module undefineds infinite_types ctxt { module_
           (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)
             (classparams_of_class class)) const;
     (* print the go code *)
-    fun print_stmt prefix_fragments b = ("", print_go_stmt gen_stringer undefineds infinite_types
+    fun print_stmt prefix_fragments b = ("", print_rust_stmt gen_stringer undefineds infinite_types
       tyco_syntax const_syntax (make_vars reserved_syms) args_num is_sum_type is_class_param
       (Code_Thingol.is_constr program) (deresolver prefix_fragments, deresolver) b);
 
@@ -784,7 +792,7 @@ fun serialize_go gen_stringer go_module undefineds infinite_types ctxt { module_
     fun print_module _ base _ ps = (base, Pretty.chunks2
       (str ("package " ^ base)
       :: block_enclose (str "import (", str ")")
-          (map (str o print_go_string) (get_imports base))
+          (map (str o print_rust_string) (get_imports base))
       :: (map snd ps) ))
 
 
@@ -793,14 +801,14 @@ fun serialize_go gen_stringer go_module undefineds infinite_types ctxt { module_
         print_module = print_module, print_stmt = print_stmt,
         lift_markup = K I } go_program
      |> curry (op @) includes
-     |> map (apfst (fn a => [a, "exported.rs.go"]))
+     |> map (apfst (fn a => [a, "exported.rs"]))
 
     val is_single_module = length p = 1
   in (
     if is_single_module
       then Code_Target.Singleton ("go", snd (hd p))
-      else Code_Target.Hierarchy ((["go.mod"], Pretty.chunks2 [
-        concat [str "module",(str o print_go_string) go_module],
+      else Code_Target.Hierarchy ((["cargo.toml"], Pretty.chunks2 [
+        concat [str "module",(str o print_rust_string) go_module],
         str "go 1.18"
       ]) :: p),
     try (deresolver [])
@@ -822,7 +830,7 @@ val _ = Theory.setup
   (Code_Target.add_language
     (target, { serializer = serializer, literals = literals,
       check = { env_var = "ISABELLE_GOEXE",
-        make_destination = fn p => p + Path.explode "export.rs.go",
+        make_destination = fn p => p + Path.explode "export.rs",
         make_command = fn p => "test -d export.rs.go && cd export.rs.go && isabelle go build ./"^p^" || isabelle go build ./export.rs.go"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
