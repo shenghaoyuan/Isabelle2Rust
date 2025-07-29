@@ -29,7 +29,7 @@ session Max_Test in "maxTest" = Rust +
   theories [document = false, condition = ISABELLE_GOEXE]
     max
   export_files [3]
-    "*:export1/**"
+    "*:code/export1/**"
 
 session Get_Test in "getTest" = Rust +
   description "get test"
@@ -37,4 +37,4 @@ session Get_Test in "getTest" = Rust +
   theories [document = false, condition = ISABELLE_GOEXE]
     get
   export_files [3]
-    "*:export1/**"
+    "*:code/export1/**"
