@@ -3,12 +3,12 @@ theory max
   "Rust.Rust_Setup"
 begin
 
-fun max:: "int \<Rightarrow> int \<Rightarrow> int" where
-" max a b = (if a > b then a else b) 
+fun mymax:: "int \<Rightarrow> int \<Rightarrow> int" where
+" mymax a b = (if a > b then a else b) 
 "
 
-export_code  max in Rust
-  module_name Max
+export_code  mymax in Rust
+ (* module_name maxTest *)
 
                     
 end

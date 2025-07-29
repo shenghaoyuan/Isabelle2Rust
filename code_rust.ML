@@ -27,9 +27,10 @@ fun map_terms_bottom_up f (t as IConst _) = f t
         clauses = (map o apply2) (map_terms_bottom_up f) clauses,
         primitive = map_terms_bottom_up f t0 });
 
+(*
 fun range_of_head t =
   case fst (Code_Thingol.unfold_app t) of
-    IConst {range, ...} => range
+    IConst {range, ...} => range *)
 
 val print_rust_string =
   let
@@ -84,7 +85,7 @@ datatype rust_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bo
         inst_params: ((string * (const * int)) * (thm * bool)) list,
         superinst_params: ((string * (const * int)) * (thm * bool)) list };
 
-fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syntax reserved
+fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const_syntax reserved
     args_num is_sum_type is_class_param is_constr (deresolve, deresolve_full) =
   let
     (*Pretty-print formating helpers*)
@@ -156,8 +157,8 @@ fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syn
     fun print_go_typedef tyco vs cos reserved = let
       val [p,m] = Name.invent (snd reserved) "p" 2
       val ctxt = Name.declare p (Name.declare m (snd reserved))
-      val tyargs = map ITyVar vs
-      val self = tyco `%% tyargs
+      val tyargs = map ITyVar vs (*
+      val self = tyco `%% tyargs *)
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
 
@@ -172,7 +173,7 @@ fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syn
 				return tname.A
 			}
 			*)
-      fun print_constructor m type_name ((name,_), tys) = let
+      fun print_constructor (*m*) type_name ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
          |> map (fn (name, arg) => oneline [str name, print_go_typ tyvars arg])
@@ -191,8 +192,8 @@ fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syn
           | SOME name' => name')
         val eliminator = if null tys then str "" else print_func
           (applify "(" ")" I NOBR (Pretty.block [applify_constraints tyvars (str elim_name) vs, str ("("^p^" "), typ, str ")"])  (map (print_go_typ tyvars o snd) named_fields))
-          elim_body
-        val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")"
+          elim_body (*
+        val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")" *)
         val constr = oneline [block_enclose (concat [str "type", head, str "struct {"], str "}")
           fields]
         in (constr, eliminator) end
@@ -201,13 +202,13 @@ fun print_rust_stmt gen_stringer undefineds infinite_types tyco_syntax const_syn
         [((name,_),tys)] => let
           val name = deresolve_const name
           val tname = deresolve_tyco tyco
-          val (constr, dest) = print_constructor m (SOME name) ((tname, []), tys)
+          val (constr, dest) = print_constructor (*m*) (SOME name) ((tname, []), tys)
         in Pretty.chunks [constr, dest] end
       (*output multi constructors & eliminators，and an "any" sum type to combine constructors*)
       else let
           val (constrs, destrs) = cos
             |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys))
-            |> map (print_constructor m NONE)
+            |> map (print_constructor (*m*) NONE)
             |> split_list
           val names = map (fn ((name,_),_) => (str o deresolve_const) name) cos
           val comment = block (str "// sum type which can be " :: Pretty.commas names)
@@ -778,7 +779,7 @@ fun serialize_go gen_stringer go_module undefineds infinite_types ctxt { module_
           (length o fst o Code_Thingol.unfold_fun o the o AList.lookup (op =)
             (classparams_of_class class)) const;
     (* print the go code *)
-    fun print_stmt prefix_fragments b = ("", print_rust_stmt gen_stringer undefineds infinite_types
+    fun print_stmt prefix_fragments b = ("", print_rust_stmt (*gen_stringer*) undefineds infinite_types
       tyco_syntax const_syntax (make_vars reserved_syms) args_num is_sum_type is_class_param
       (Code_Thingol.is_constr program) (deresolver prefix_fragments, deresolver) b);
 

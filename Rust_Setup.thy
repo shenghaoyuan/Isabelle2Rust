@@ -18,7 +18,8 @@ subsection \<open>bool and logic connectives\<close>
 code_printing
   type_constructor bool \<rightharpoonup> (Rust) "bool"
 | constant "False::bool" \<rightharpoonup> (Rust) "false"
-| constant "True::bool" \<rightharpoonup> (Rust) "true"
+| constant "True::bool" \<rightharpoonup> (Rust) "true" (*
+| type_constructor Int.int \<rightharpoonup> (Rust) "u64" *)
 
 |  constant HOL.Not \<rightharpoonup> (Rust) "(!(_))"
 | constant HOL.conj \<rightharpoonup> (Rust) infixl 1 "&&"
