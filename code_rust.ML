@@ -91,20 +91,27 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     (*Pretty-print formating helpers*)
     fun lookup_tyvar tyvars = lookup_var tyvars; (** TODO: explain this function + insert a function to print `tyvars: Code_Printer.var_ctxt` *)
     fun intro_tyvars vs = intro_vars (map fst vs); (** TODO: print `vs` *)
+
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
     val deresolve_tyco = deresolve o Type_Constructor;
+
     val oneline = Pretty.unbreakable o semicolon;
     val block = Pretty.unbreakable o Pretty.block;
     val spaced = Pretty.unbreakable o concat;
-
+    
+    (* Lu: destructor *)
     fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
+
     fun applify_constraints _ head [] = head (** TODO: what is `Pretty.T` and how to print `head: Pretty.T` *)
      | applify_constraints tyvars head vs = let (** TODO: print `vs` *)
-          val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
-         in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end
+          val lifetimes = (block o commas o map (str o lookup_tyvar tyvars)) vs
+          in block [head, str "<", lifetimes, str ">"] end
+          (* Lu: Rust generic type belike <T>*)
+          (*val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
+         in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end*)
 
     fun print_go_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
         NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
@@ -116,15 +123,15 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     (* uncurried types of functions in type classes are special-cased here *)
     fun print_go_typ_uncurried_toplevel tyvars (typ as "fun" `%% _) = let
           val (args, rtyp) = Code_Thingol.unfold_fun typ
-          val head = applify "(" ")" (print_go_typ tyvars) NOBR (str "func") args;
+          val head = applify "(" ")" (print_go_typ tyvars) NOBR (str "fn") args;
         in concat [head, print_go_typ tyvars rtyp] end
     | print_go_typ_uncurried_toplevel tyvars typ =
-        block [str "func () ", print_go_typ tyvars typ]
+        block [str "fn () -> ", print_go_typ tyvars typ]
 
     (* wrap a statement into an immediately called function to make it an expression *)
     fun wrap_into_lambda tyvars typ body =
       block_enclose
-        (concat [str "func ()", print_go_typ tyvars typ, str "{"], str "}()/*Tag: Handle Statement*/") body
+        (concat [str "fn () ->", print_go_typ tyvars typ, str "{"], str "}()/*Tag: Handle Statement*/") body
     fun wrap_in_return t = oneline [str "return", t]
     fun wrap_if true = wrap_in_return
       | wrap_if false = I
@@ -135,7 +142,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     }
     *)
     fun print_func head body = block_enclose
-      (block [str "func ", head, str " {"], str "}")
+      (block [str "fn ", head, str " {"], str "}")
       [body];
     (*params: type val context, val context, function name, is generics, extras, function params, function param types, return type*)
     fun print_func_head tyvars vars const tvs extras params tys rty = let
