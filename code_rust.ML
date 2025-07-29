@@ -89,8 +89,8 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     args_num is_sum_type is_class_param is_constr deresolve (*(deresolve, deresolve_full)*) =
   let
     (*Pretty-print formating helpers*)
-    fun lookup_tyvar tyvars = lookup_var tyvars;
-    fun intro_tyvars vs = intro_vars (map fst vs);
+    fun lookup_tyvar tyvars = lookup_var tyvars; (** TODO: explain this function + insert a function to print `tyvars: Code_Printer.var_ctxt` *)
+    fun intro_tyvars vs = intro_vars (map fst vs); (** TODO: print `vs` *)
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
     val deresolve_classrel = deresolve o Class_Relation;
@@ -100,13 +100,13 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val block = Pretty.unbreakable o Pretty.block;
     val spaced = Pretty.unbreakable o concat;
 
-    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name
-    fun applify_constraints _ head [] = head
-     | applify_constraints tyvars head vs = let
+    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
+    fun applify_constraints _ head [] = head (** TODO: what is `Pretty.T` and how to print `head: Pretty.T` *)
+     | applify_constraints tyvars head vs = let (** TODO: print `vs` *)
           val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
          in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end
 
-    fun print_go_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of
+    fun print_go_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
         NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
       | SOME (_, print) => print (K (print_go_typ tyvars)) NOBR tys)
     | print_go_typ tyvars (ITyVar v) = (str o lookup_tyvar tyvars) v
@@ -157,7 +157,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     fun print_go_typedef tyco vs cos reserved = let
       val (p,m) = case Name.invent (snd reserved) "p" 2 of
         [a, b] => (a, b) |
-        _ => ("print_go_typedef_Error", "print_go_typedef_Error") 
+        _ => error "print_go_typedef_Error" 
       val ctxt = Name.declare p (Name.declare m (snd reserved))
       val tyargs = map ITyVar vs (*
       val self = tyco `%% tyargs *)
@@ -420,7 +420,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     and print_go_expr const_syntax tyvars some_thm vars fxy t =
         print_go_term_gen false const_syntax tyvars some_thm vars fxy t
     and print_go_term_gen is_stmt const_syntax tyvars some_thm vars fxy t = case t of
-      IConst (const as {sym,...}) => let
+      IConst const (*(const as {sym,...})*) => let (*ysh: const is a record, it must have a sym field *)
         in (print_app is_stmt const_syntax tyvars some_thm vars fxy (const, [])) end
     | t1 `$ t2 => (case Code_Thingol.unfold_const_app t of
          SOME app =>
@@ -519,7 +519,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         val (tys', ty') = Code_Thingol.unfold_fun_n (length params) ty;
         fun print_rhs is_stmt vars' ((_, t), (some_thm, _)) =
           print_go_term_gen is_stmt const_syntax tyvars some_thm vars' NOBR t;
-        val p = (case Name.invent (snd vars2) "m" 1 of [a] => a | _ => "error_name_pm")
+        val p = (case Name.invent (snd vars2) "m" 1 of [a] => a | _ => error "error_name_pm")
         val vars3 = intro_vars [p] vars2
         fun print_fun_clause ((targets, t), (some_thm, _)) =
           let
@@ -847,7 +847,7 @@ val _ = Theory.setup
   #> Code_Target.set_printings (Type_Constructor ("fun",
     [(target, SOME (2, fn print_go_typ => fn fxy => fn [arg, rtyp] => let
         val head = applify "(" ")" (print_go_typ fxy) NOBR (str "func") [arg];
-      in concat [head, print_go_typ fxy rtyp] end)
+      in concat [head, print_go_typ fxy rtyp] end | _ => error "Not [arg, rtyp]")
     )]))
     (*add rust reserved words*)
   #> fold (Code_Target.add_reserved target) [
