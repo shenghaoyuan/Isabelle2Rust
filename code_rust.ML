@@ -70,7 +70,7 @@ val literals = Literals {
   infix_cons = (6, "::") (* TODO: this will go wrong if ever used *)
 };
 (* Lu: Go does not have a cons operator, Haskell has : operator, like this: 1 : [2, 3, 4]) *)
-(* Rust allows using :: to construct a list, 
+(* Lu: Rust allows using :: to construct a list, 
     but it's generally recommended to use vec![...] instead. *)
 
 
@@ -100,6 +100,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val block = Pretty.unbreakable o Pretty.block;
     val spaced = Pretty.unbreakable o concat;
 
+    (* *)
     fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name
     fun applify_constraints _ head [] = head
      | applify_constraints tyvars head vs = let
