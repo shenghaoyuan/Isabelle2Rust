@@ -38,3 +38,11 @@ session Get_Test in "getTest" = Rust +
     get
   export_files [3]
     "*:code/export1/**"
+
+session Generic_Test in "genericTest" = Rust +
+  description "get test"
+  options [timeout = 300]
+  theories [document = false, condition = ISABELLE_GOEXE]
+    generic
+  export_files [3]
+    "*:code/export1/**"

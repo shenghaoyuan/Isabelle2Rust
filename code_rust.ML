@@ -91,6 +91,10 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     (*Pretty-print formating helpers*)
     fun lookup_tyvar tyvars = lookup_var tyvars; (** TODO: explain this function + insert a function to print `tyvars: Code_Printer.var_ctxt` *)
     fun intro_tyvars vs = intro_vars (map fst vs); (** TODO: print `vs` *)
+    fun print_tyvars (namemap, _) =
+        Symtab.dest namemap
+        |> map (fn (k, v) => k ^ " => " ^ v)
+        |> String.concatWith ", "
 
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
@@ -112,25 +116,31 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           (*val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
          in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end*)
 
-    fun print_go_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
+    fun print_rust_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
         NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
-      | SOME (_, print) => print (K (print_go_typ tyvars)) NOBR tys)
-    | print_go_typ tyvars (ITyVar v) = (str o lookup_tyvar tyvars) v
+      | SOME (_, print) => print (K (print_rust_typ tyvars)) NOBR tys)
+    | print_rust_typ tyvars (ITyVar v) = (str o lookup_tyvar tyvars) v
     and apply_constraints tyvars head vs =
-      gen_applify false "[" "]" (print_go_typ tyvars) NOBR head vs
+      gen_applify false "<" ">" (print_rust_typ tyvars) NOBR head vs
 
     (* uncurried types of functions in type classes are special-cased here *)
-    fun print_go_typ_uncurried_toplevel tyvars (typ as "fun" `%% _) = let
+    fun print_rust_typ_uncurried_toplevel tyvars (typ as "fun" `%% _) = let
           val (args, rtyp) = Code_Thingol.unfold_fun typ
-          val head = applify "(" ")" (print_go_typ tyvars) NOBR (str "fn") args;
-        in concat [head, print_go_typ tyvars rtyp] end
-    | print_go_typ_uncurried_toplevel tyvars typ =
-        block [str "fn () -> ", print_go_typ tyvars typ]
+          val head = applify "(" ")" (print_rust_typ tyvars) NOBR (str "fn") args;
+        in concat [head, str(" -> "), print_rust_typ tyvars rtyp] end
+    | print_rust_typ_uncurried_toplevel tyvars typ =
+        block [str "fn () -> ", print_rust_typ tyvars typ]
 
+    (* Lu: consider another way to deal with this *)
     (* wrap a statement into an immediately called function to make it an expression *)
     fun wrap_into_lambda tyvars typ body =
-      block_enclose
-        (concat [str "fn () ->", print_go_typ tyvars typ, str "{"], str "}()/*Tag: Handle Statement*/") body
+      (*block_enclose
+        (concat [str "fn () ->", print_rust_typ tyvars typ, str "{"], str "}()/*Tag: Handle Statement*/") *)
+        block_enclose
+          (concat [str "(|| -> ", print_rust_typ tyvars typ, str " {"],
+                  str "})() // wrapped statement")
+        body
+    (* Lu: wrap an expression into a return...*)
     fun wrap_in_return t = oneline [str "return", t]
     fun wrap_if true = wrap_in_return
       | wrap_if false = I
@@ -145,11 +155,12 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       [body];
     (*params: type val context, val context, function name, is generics, extras, function params, function param types, return type*)
     fun print_func_head tyvars vars const tvs extras params tys rty = let
+      (*val _ = tracing ("TYVARS in head: " ^ print_tyvars tyvars)*)
       val args = params ~~ tys
       |> map (fn (param, ty) => let
          val name = case param of
            NONE => "_" | SOME n => lookup_var vars n;
-         in Pretty.block [str name, Pretty.brk 1, str": ", print_go_typ tyvars ty] end)
+         in Pretty.block [str name, Pretty.brk 1, str": ", print_rust_typ tyvars ty] end)
       |> (curry op @ extras)
       |> enum "," "(" ")"
       val sym = case const of
@@ -174,7 +185,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       fun print_constructor (*m*) type_name ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
-         |> map (fn (name, arg) => Pretty.block [str name, str ": ", print_go_typ tyvars arg, str ","])
+         |> map (fn (name, arg) => Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","])
         val head = applify_constraints tyvars (str name) vs (*
         val typ = apply_constraints tyvars (str name) tyargs
         val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")" *)
@@ -409,7 +420,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     | IVar (SOME v) => wrap_if is_stmt (str (lookup_var vars v))
     | (params, tys) `|=> (t, rty) => let
         val vars' = intro_vars (map_filter I [params]) vars;
-        val func_head = print_func_head tyvars vars' NONE [] [] [params] [tys] (print_go_typ tyvars rty)
+        val func_head = print_func_head tyvars vars' NONE [] [] [params] [tys] (print_rust_typ tyvars rty)
         val body = print_go_term const_syntax tyvars some_thm vars' fxy t
       in wrap_if is_stmt (print_func func_head body) end
     | ICase { clauses = [], ... } => let
@@ -467,9 +478,11 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             val (tys, ty') = Code_Thingol.unfold_fun ty;
             val params = Name.invent (snd reserved) "a" (length tys);
             val tyvars = intro_tyvars vs reserved;
+            (* Lu: debug*)
+            val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)
             val vars = intro_vars params tyvars;
         val dict_args = print_dict_args tyvars vs
-        val head = print_func_head tyvars vars ((SOME o Constant) const) (map fst vs) dict_args (map SOME params) tys (print_go_typ tyvars ty');
+        val head = print_func_head tyvars vars ((SOME o Constant) const) (map fst vs) dict_args (map SOME params) tys (print_rust_typ tyvars ty');
         val _ = warning ("you appear to have defined a function "^const^" with no body; generating a call to panic!() ...")
       in
         print_func head (oneline [str ("panic!("^print_rust_string const^")")])
@@ -515,7 +528,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             wrap_new_scope clause
           end;
         val dict_args = print_dict_args tyvars vs
-        val head = print_func_head tyvars vars3 ((SOME o Constant) const) (map fst vs) dict_args params tys' (print_go_typ tyvars ty');
+        val head = print_func_head tyvars vars3 ((SOME o Constant) const) (map fst vs) dict_args params tys' (print_rust_typ tyvars ty');
       in (*if null params andalso null vs then
          print_var ((str o deresolve_const) const) (print_rhs false vars2 (hd eqs))
        else*)
@@ -537,7 +550,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         val fields = params
           |> map (fn (name,typ) => block [
                (str o deresolve_const) name, Pretty.brk 1,
-               print_go_typ_uncurried_toplevel tyvars typ
+               print_rust_typ_uncurried_toplevel tyvars typ
              ])
           |> (curry op @) super_fields
         val head = applify_constraints tyvars ((str o deresolve_class) sym) [target]
@@ -567,17 +580,17 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
                | abstract_using aux_dom should_wrap rty body = let
                   val params = aux_dom
                    |> map (fn (aux, ty) =>
-                       block [(str o lookup_var vars) aux, Pretty.brk 1, print_go_typ tyvars ty])
+                       block [(str o lookup_var vars) aux, Pretty.brk 1, print_rust_typ tyvars ty])
                   val head = print_func_head tyvars vars NONE [] params [] []
-                       ((if should_wrap then print_go_typ_uncurried_toplevel else print_go_typ) tyvars rty)
+                       ((if should_wrap then print_rust_typ_uncurried_toplevel else print_rust_typ) tyvars rty)
                  in print_func head (wrap_if should_wrap body) end; (*
              val aux_abstract = if not (null aux_dom1) andalso not (null aux_dom2)
                then abstract_using aux_dom1 true (map snd aux_dom2 `--> #range const) o abstract_using aux_dom2 false (#range const)
                else abstract_using aux_dom1 false (#range const) o abstract_using aux_dom2 false (#range const)
              val wrap_in_func = if null aux_dom1 andalso null aux_dom2
-               then print_func (print_func_head tyvars vars NONE [] [] [] [] (print_go_typ tyvars (#range const))) else I *)
+               then print_func (print_func_head tyvars vars NONE [] [] [] [] (print_rust_typ tyvars (#range const))) else I *)
              val wrap_aux = case (null aux_dom1, null aux_dom2) of
-               (true, true) => print_func (print_func_head tyvars vars NONE [] [] [] [] (print_go_typ tyvars (#range const)))
+               (true, true) => print_func (print_func_head tyvars vars NONE [] [] [] [] (print_rust_typ tyvars (#range const)))
              | (false, false) => abstract_using aux_dom1 true (map snd aux_dom2 `--> #range const) o abstract_using aux_dom2 false (#range const)
              | _ => abstract_using aux_dom1 false (#range const) o abstract_using aux_dom2 false (#range const)
            in block [
@@ -820,9 +833,9 @@ val _ = Theory.setup
         make_command = fn p => "test -d export.rs.go && cd export.rs.go && isabelle go build ./"^p^" || isabelle go build ./export.rs.go"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
-    [(target, SOME (2, fn print_go_typ => fn fxy => fn [arg, rtyp] => let
-        val head = applify "(" ")" (print_go_typ fxy) NOBR (str "func") [arg];
-      in concat [head, print_go_typ fxy rtyp] end | _ => error "Not [arg, rtyp]")
+    [(target, SOME (2, fn print_rust_typ => fn fxy => fn [arg, rtyp] => let
+        val head = applify "(" ")" (print_rust_typ fxy) NOBR (str "fn") [arg];
+      in concat [head, print_rust_typ fxy rtyp] end | _ => error "Not [arg, rtyp]")
     )]))
     (*add rust reserved words*)
   #> fold (Code_Target.add_reserved target) [
