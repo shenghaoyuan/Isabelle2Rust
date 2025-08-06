@@ -94,7 +94,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     fun print_tyvars (namemap, _) =
         Symtab.dest namemap
         |> map (fn (k, v) => k ^ " => " ^ v)
-        |> String.concatWith ", "
+        |> String.concatWith ",\n"
 
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
@@ -182,7 +182,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
 
-      fun print_constructor (*m*) type_name ((name,_), tys) = let
+      fun print_constructor (*m*) (*type_name*) _ ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
          |> map (fn (name, arg) => Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","])
@@ -302,14 +302,14 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       raise Fail "there's a bug in the pattern-match translator"
     | print_clause tyvars some_thm vars p ((target, pattern) :: subps) term =
       let
-        fun print_condition vars conds (constr, (*typargs*) _, range, args) p q target body = let
-          val destructor = (mk_dest_name o deresolve) constr
+        fun print_condition vars conds (constr, (*typargs*) _, range, args) (*p*)_ (*q*)_ target body = let
+          val (*destructor*)_ = (mk_dest_name o deresolve) constr
           val (tyco, typargs) = case snd (Code_Thingol.unfold_fun range) of
             a `%% typargs => (a, typargs) |
           _ => error "snd (Code_Thingol.unfold_fun range) error"
           val is_boxed = is_sum_type constr orelse List.exists (fn n => n = tyco) infinite_types
-          val names = map (fn (SOME n) => (str o lookup_var vars) n | NONE => str "_") args
-          val any_names = exists is_some args
+          val (*names*) _ = map (fn (SOME n) => (str o lookup_var vars) n | NONE => str "_") args
+          val (*any_names*) _ = exists is_some args
           val checks = conds
             |> map (fn (var,const) => concat [
                  str var,
@@ -478,8 +478,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             val (tys, ty') = Code_Thingol.unfold_fun ty;
             val params = Name.invent (snd reserved) "a" (length tys);
             val tyvars = intro_tyvars vs reserved;
-            (* Lu: debug*)
-            val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)
+            val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)   (* Lu: debug*)
             val vars = intro_vars params tyvars;
         val dict_args = print_dict_args tyvars vs
         val head = print_func_head tyvars vars ((SOME o Constant) const) (map fst vs) dict_args (map SOME params) tys (print_rust_typ tyvars ty');
@@ -738,8 +737,8 @@ fun go_program_of_program ctxt module_name reserved identifiers exports program 
 
 
 
-fun serialize_go (*gen_stringer *) go_module undefineds infinite_types ctxt { module_name, reserved_syms,
-     identifiers, includes, class_syntax, tyco_syntax, const_syntax } program exports =
+fun serialize_rust (*gen_stringer *) go_module undefineds infinite_types ctxt { module_name, reserved_syms,
+     identifiers, includes, class_syntax = _,  tyco_syntax, const_syntax } program exports =
   let
     (* build program *)
     val { deresolver, hierarchical_program = go_program } =
@@ -822,7 +821,7 @@ val serializer : Code_Target.serializer =
   >> (fn (((go_module, (*gen_stringer*) _ ), undef_terms), infinite_types) => fn lthy => let
          val undefineds = map (fst o dest_Const o Syntax.read_term lthy) undef_terms
          val infinite_types = map (fst o dest_Type o Syntax.parse_typ lthy) infinite_types
-       in serialize_go (*gen_stringer *) go_module undefineds infinite_types lthy end))
+       in serialize_rust (*gen_stringer *) go_module undefineds infinite_types lthy end))
 
 
 val _ = Theory.setup
