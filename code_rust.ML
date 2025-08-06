@@ -96,6 +96,15 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         |> map (fn (k, v) => k ^ " => " ^ v)
         |> String.concatWith ", "
 
+    fun print_tys tys =
+      let
+        fun collect_tyvar_names (ITyVar v) = [v]
+        | collect_tyvar_names (tyco `%% tys) = 
+          maps collect_tyvar_names tys; 
+      in
+        String.concatWith ",\n" (map (String.concat o collect_tyvar_names) tys)
+      end;
+
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
     val deresolve_classrel = deresolve o Class_Relation;
@@ -104,7 +113,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val oneline = Pretty.unbreakable o semicolon;
     val block = Pretty.unbreakable o Pretty.block;
     val spaced = Pretty.unbreakable o concat;
-    
+
     (* Lu: destructor *)
     fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
 
@@ -116,9 +125,14 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           (*val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
          in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end*)
 
-    fun print_rust_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
-        NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
-      | SOME (_, print) => print (K (print_rust_typ tyvars)) NOBR tys)
+    fun print_rust_typ tyvars (tyco `%% tys) =
+      let
+        val _ = tracing ("TYCO in rust_typ: " ^ tyco ^ "\nTYS in rust_typ: " ^ print_tys tys)
+      in
+        (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
+          NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
+        | SOME (_, print) => print (K (print_rust_typ tyvars)) NOBR tys)
+      end
     | print_rust_typ tyvars (ITyVar v) = (str o lookup_tyvar tyvars) v
     and apply_constraints tyvars head vs =
       gen_applify false "<" ">" (print_rust_typ tyvars) NOBR head vs
@@ -495,6 +509,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           |> intro_base_names
                (is_none o tyco_syntax) deresolve_tyco tycos
           |> intro_tyvars vs;
+        val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)
         val simple = case eqs
          of [((ts, _), _)] => forall Code_Thingol.is_IVar ts
           | _ => false;
