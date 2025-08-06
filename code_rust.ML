@@ -35,7 +35,7 @@ fun print_debug_info_itype (ITyVar itypvn) = itypvn
     vn ^ wrap_list (map print_debug_info_itype itypes) 
 fun print_debug_info_dict (Dict (classrels, plain_dict)) = 
   let 
-    fun print_classrels claaarels = 
+    fun print_classrels (*claaarels*)_  = 
       wrap_list (map (fn (s1, s2) => wrap_args [s1, s2]) classrels) (*type class = string*)
   in
     wrap_args [print_classrels classrels , print_plain_dict plain_dict]
@@ -153,13 +153,13 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         |> String.concatWith ",\n"
 
     fun print_tys tys =
-      let
+      (*let
         fun collect_tyvar_names (ITyVar v) = [v]
-        | collect_tyvar_names (tyco `%% tys) = 
-          maps collect_tyvar_names tys; 
-      in
+        | collect_tyvar_names (_(*tyco*) `%% tys) = 
+          maps collect_tyvar_names tys
+      in*)
         String.concatWith ",\n" (map print_debug_info_itype tys)
-      end;
+      
 
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
