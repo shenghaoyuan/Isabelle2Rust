@@ -27,6 +27,62 @@ fun map_terms_bottom_up f (t as IConst _) = f t
         clauses = (map o apply2) (map_terms_bottom_up f) clauses,
         primitive = map_terms_bottom_up f t0 });
 
+fun wrap_args sl = "(" ^ String.concatWith ", " sl ^ ")"
+fun wrap_list sl = "[" ^ String.concatWith ", " sl ^ "]"
+fun wrap_struct sl = "{" ^ String.concatWith ", " sl ^ "}"
+fun print_debug_info_itype (ITyVar itypvn) = itypvn
+  | print_debug_info_itype (vn `%% itypes) = 
+    vn ^ wrap_list (map print_debug_info_itype itypes) 
+fun print_debug_info_dict (Dict (classrels, plain_dict)) = 
+  let 
+    fun print_classrels claaarels = 
+      wrap_list (map (fn (s1, s2) => wrap_args [s1, s2]) classrels) (*type class = string*)
+  in
+    wrap_args [print_classrels classrels , print_plain_dict plain_dict]
+  end
+and print_plain_dict (Dict_Const ((s, c), args)) = 
+    wrap_args [(wrap_args [s, c]),
+      wrap_list (map (fn (ityp, dicts) =>
+        wrap_args [(print_debug_info_itype ityp), wrap_list (map print_debug_info_dict dicts)]) args)]  
+  | print_plain_dict (Dict_Var {var, index, length, class, unique}) = 
+    wrap_struct ["var: "^var, "index: "^Int.toString index, "length: "^Int.toString length, 
+      "class: "^class, "unique: "^Bool.toString unique]
+fun print_debug_info_const {sym, typargs, dicts, dom, range, annotation} = 
+  let 
+    val sym_base = case sym of
+      Constant a => a 
+      | Type_Constructor b => b
+      | Type_Class c => c 
+      | Class_Relation (d1, d2) => wrap_args [d1, d2]
+      | Class_Instance (e1, e2) => wrap_args [e1, e2]
+      | Module f => f 
+    val annot = case annotation of 
+      NONE => "NONE"
+      | SOME a => print_debug_info_itype a
+  in
+    wrap_struct ["sym :"^sym_base, "typargs: "^wrap_list (map print_debug_info_itype typargs),
+      "dicts: "^wrap_list ((map (wrap_list o (map print_debug_info_dict)) dicts)),
+      "dom: "^wrap_list (map print_debug_info_itype dom),
+      "range: "^print_debug_info_itype range, "annotation: "^annot]
+  end
+fun dest_vname v = case v of
+  NONE => "Anonymous"
+  | SOME vname => vname
+fun print_debug_info_iterm (IConst const) = 
+    print_debug_info_const const
+  | print_debug_info_iterm (IVar vname) = 
+    dest_vname vname
+  | print_debug_info_iterm (t1 `$ t2) =
+    "(" ^ print_debug_info_iterm t1 ^ "`$" ^ print_debug_info_iterm t2 ^ ")"
+  | print_debug_info_iterm ((v, ityp1) `|=> (t, ityp2)) =
+    wrap_args [wrap_args [dest_vname v, print_debug_info_itype ityp1], 
+      wrap_args [print_debug_info_iterm t, print_debug_info_itype ityp2]]
+  | print_debug_info_iterm (ICase {term, typ, clauses, primitive}) =
+    wrap_struct ["term: "^print_debug_info_iterm term, "typ: "^print_debug_info_itype typ,
+    "clauses: "^wrap_list (map (fn (t1, t2) 
+      => wrap_args [print_debug_info_iterm t1, print_debug_info_iterm t2]) clauses),
+    "primitive: "^print_debug_info_iterm primitive]
+
 (*
 fun range_of_head t =
   case fst (Code_Thingol.unfold_app t) of
@@ -96,6 +152,15 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         |> map (fn (k, v) => k ^ " => " ^ v)
         |> String.concatWith ",\n"
 
+    fun print_tys tys =
+      let
+        fun collect_tyvar_names (ITyVar v) = [v]
+        | collect_tyvar_names (tyco `%% tys) = 
+          maps collect_tyvar_names tys; 
+      in
+        String.concatWith ",\n" (map print_debug_info_itype tys)
+      end;
+
     val deresolve_const = deresolve o Constant;
     val deresolve_class = deresolve o Type_Class;
     val deresolve_classrel = deresolve o Class_Relation;
@@ -104,7 +169,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val oneline = Pretty.unbreakable o semicolon;
     val block = Pretty.unbreakable o Pretty.block;
     val spaced = Pretty.unbreakable o concat;
-    
+
     (* Lu: destructor *)
     fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
 
@@ -116,9 +181,14 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           (*val anys = (block o commas o map (str o lookup_tyvar tyvars)) vs
          in block [head, str "[", anys, Pretty.brk 1, str "any", str "]"] end*)
 
-    fun print_rust_typ tyvars (tyco `%% tys) = (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
-        NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
-      | SOME (_, print) => print (K (print_rust_typ tyvars)) NOBR tys)
+    fun print_rust_typ tyvars (tyco `%% tys) =
+      let
+        val _ = tracing ("TYCO in rust_typ: " ^ tyco ^ "\nTYS in rust_typ: " ^ print_tys tys)
+      in
+        (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
+          NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
+        | SOME (_, print) => print (K (print_rust_typ tyvars)) NOBR tys)
+      end
     | print_rust_typ tyvars (ITyVar v) = (str o lookup_tyvar tyvars) v
     and apply_constraints tyvars head vs =
       gen_applify false "<" ">" (print_rust_typ tyvars) NOBR head vs
@@ -223,7 +293,8 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           |> String.concatWith "."
         in block (ps @ [str ".", str postfix, str"/*Tag: Dict with Classrels*/"]) end
     fun print_dict tyvars (Dict (classrels, x)) =
-      print_classrels classrels (print_plain_dict tyvars x)
+      let val _ = tracing  ("DICTS in rust_func: " ^ print_debug_info_dict (Dict (classrels, x))) in
+      print_classrels classrels (print_plain_dict tyvars x) end
     and print_plain_dict tyvars (Dict_Const (inst, args)) = let
         val needs_mono = true (* not (length args = 0)*)
         val (typargs, dss) = split_list args
@@ -407,7 +478,9 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         print_go_term_gen true const_syntax tyvars some_thm vars fxy iterm
     and print_go_expr const_syntax tyvars some_thm vars fxy t =
         print_go_term_gen false const_syntax tyvars some_thm vars fxy t
-    and print_go_term_gen is_stmt const_syntax tyvars some_thm vars fxy t = case t of
+    and print_go_term_gen is_stmt const_syntax tyvars some_thm vars fxy t = 
+    let val _ = tracing ("TERM in go_term: " ^ print_debug_info_iterm t) in 
+    case t of
       IConst const (*(const as {sym,...})*) => let (*ysh: const is a record, it must have a sym field *)
         in (print_app is_stmt const_syntax tyvars some_thm vars fxy (const, [])) end
     | t1 `$ t2 => (case Code_Thingol.unfold_const_app t of
@@ -457,7 +530,8 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
          (type_of_primitive_pattern (#primitive cases)) (#term cases) (#clauses cases)
       end
     | ICase cases => print_pattern_match is_stmt tyvars some_thm vars
-         (type_of_primitive_pattern (#primitive cases)) (#term cases) (#clauses cases);
+         (type_of_primitive_pattern (#primitive cases)) (#term cases) (#clauses cases)
+    end
 
     fun print_dict_args tyvars vs =
       let
@@ -494,6 +568,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           |> intro_base_names
                (is_none o tyco_syntax) deresolve_tyco tycos
           |> intro_tyvars vs;
+        val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)
         val simple = case eqs
          of [((ts, _), _)] => forall Code_Thingol.is_IVar ts
           | _ => false;
