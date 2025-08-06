@@ -40,7 +40,7 @@ session Get_Test in "getTest" = Rust +
     "*:code/export1/**"
 
 session Generic_Test in "genericTest" = Rust +
-  description "get test"
+  description "generic test"
   options [timeout = 300]
   theories [document = false, condition = ISABELLE_GOEXE]
     generic

@@ -692,7 +692,7 @@ fun variant_upper_camel_case s ctxt =
     ctxt |> Name.variant (String.implode s_camel)
   end;
 
-fun go_program_of_program ctxt module_name reserved identifiers exports program =
+fun rust_program_of_program ctxt module_name reserved identifiers exports program =
   let
     fun namify_module name_fragment ((nsp_class, nsp_object), nsp_common) =
       let
@@ -737,15 +737,17 @@ fun go_program_of_program ctxt module_name reserved identifiers exports program 
 
 
 
-fun serialize_rust (*gen_stringer *) go_module undefineds infinite_types ctxt { module_name, reserved_syms,
+fun serialize_rust (*gen_stringer *) rust_module rust_version rust_edition undefineds infinite_types ctxt { module_name, reserved_syms,
      identifiers, includes, class_syntax = _,  tyco_syntax, const_syntax } program exports =
   let
     (* build program *)
-    val { deresolver, hierarchical_program = go_program } =
-      go_program_of_program ctxt module_name (Name.make_context reserved_syms)
+    val { deresolver, hierarchical_program = rust_program } =
+      rust_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;
 
-    val go_module = if go_module = "" then "isabelle/exported" else go_module;
+    val rust_module = if rust_module = "" then "isabelle/exported" else rust_module;
+    val rust_version = if rust_version = "" then "0.1.0" else rust_module;
+    val rust_edition = if rust_edition = "" then "2024" else rust_module;
 
     (* helper functions that need access to the entire program *)
     fun lookup_constr tyco constr = case Code_Symbol.Graph.get_node program (Type_Constructor tyco)
@@ -781,10 +783,10 @@ fun serialize_rust (*gen_stringer *) go_module undefineds infinite_types ctxt { 
       (Code_Thingol.is_constr program) (deresolver prefix_fragments) (*(deresolver prefix_fragments, deresolver)*) b);
 
     fun get_imports module_name = Module module_name
-      |> Code_Symbol.Graph.immediate_succs go_program
+      |> Code_Symbol.Graph.immediate_succs rust_program
       |> map (fn (Module a) => a | _ => error "get_imports: Not Module")
       |> (curry op @) (map fst includes)
-      |> map (fn (a) => go_module ^ "/" ^ a)
+      |> map (fn (a) => rust_module ^ "/" ^ a)
 
     (* print modules *)
     fun print_module _ base _ ps = (base, Pretty.chunks2
@@ -797,7 +799,7 @@ fun serialize_rust (*gen_stringer *) go_module undefineds infinite_types ctxt { 
     (* serialization *)
     val p = Code_Namespace.print_hierarchical {
         print_module = print_module, print_stmt = print_stmt,
-        lift_markup = K I } go_program
+        lift_markup = K I } rust_program
      |> curry (op @) includes
      |> map (apfst (fn a => [a, "exported.rs"]))
 
@@ -806,8 +808,11 @@ fun serialize_rust (*gen_stringer *) go_module undefineds infinite_types ctxt { 
     if is_single_module
       then Code_Target.Singleton ("go", snd (hd p))
       else Code_Target.Hierarchy ((["cargo.toml"], Pretty.chunks2 [
-        concat [str "module",(str o print_rust_string) go_module],
-        str "go 1.18"
+          concat [str "[package]\n", 
+                str "name =",(str o print_rust_string) rust_module, str "\n",
+                str "version =",(str o print_rust_string) rust_version, str "\n",
+                str "edition =",(str o print_rust_string) rust_edition ],
+          str "[dependencies]"
       ]) :: p),
     try (deresolver [])
   ) end;
@@ -821,7 +826,7 @@ val serializer : Code_Target.serializer =
   >> (fn (((go_module, (*gen_stringer*) _ ), undef_terms), infinite_types) => fn lthy => let
          val undefineds = map (fst o dest_Const o Syntax.read_term lthy) undef_terms
          val infinite_types = map (fst o dest_Type o Syntax.parse_typ lthy) infinite_types
-       in serialize_rust (*gen_stringer *) go_module undefineds infinite_types lthy end))
+       in serialize_rust (*gen_stringer *) go_module "" "" undefineds infinite_types lthy end))
 
 
 val _ = Theory.setup
