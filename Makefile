@@ -1,8 +1,11 @@
 .open:
 
-.PHONY: open clean
+.PHONY: open clean code
 
 DEFAULT_FILE = $(CURDIR)/Rust_Setup.thy
+
+code:
+	isabelle build -v -e -d . $(THEORY)
 
 open:
 	isabelle jedit -d . $(DEFAULT_FILE)
