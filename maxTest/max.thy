@@ -8,6 +8,7 @@ fun mymax:: "int \<Rightarrow> int \<Rightarrow> int" where
 "
 
 export_code  mymax in Rust
+export_code  mymax in OCaml
  (* module_name maxTest *)
 
                     
