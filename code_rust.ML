@@ -255,11 +255,17 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       fun print_constructor (*m*) (*type_name*) _ ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
-         |> map (fn (name, arg) => Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","])
+         |> map (fn (name, arg) =>
+              Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","]) (*TODO: `,` has problem: see getTest example*)
         val head = applify_constraints tyvars (str name) vs (*
         val typ = apply_constraints tyvars (str name) tyargs
         val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")" *)
-        val constr = block ([head, str "{"] @ fields @ [str "},"])
+        val constr = block (
+          case fields of
+          (** if the constructor field is nil, don't print `()`: isabelle's None \<rightarrow> Rust's None *)
+          [] => [head, str ""] @ fields @ [str ","] | 
+          (** if the constructor field has something, print `()`: Some x \<rightarrow> Some (x:T) *)
+          _ => [head, str "("] @ fields @ [str "),"])
         in constr end
       (*call print_constructor to output definition of single constructor & eliminator*)
       in if not allowed_infinite andalso length cos = 1 then case cos of
@@ -272,7 +278,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       (*output multi constructors & eliminators，and an "any" sum type to combine constructors*)
       else let
           val constrs = cos
-            |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys))
+            |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys)) (**TODO: why this line? *)
             |> map (print_constructor (*m*) NONE)
           val names = map (fn ((name,_),_) => (str o deresolve_const) name) cos
           val comment = block (str "// enum type which can be " :: Pretty.commas names)
