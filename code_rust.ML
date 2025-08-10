@@ -211,7 +211,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
                   str "})() // wrapped statement")
         body
     (* Lu: wrap an expression into a return...*)
-    fun wrap_in_return t = oneline [str "return", t]
+    fun wrap_in_return t = oneline [t] (** [str "return", t]  *)
     fun wrap_if true = wrap_in_return
       | wrap_if false = I
 
