@@ -167,11 +167,11 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val deresolve_inst = deresolve o Class_Instance;
     val deresolve_tyco = deresolve o Type_Constructor;
     val oneline = Pretty.unbreakable o semicolon;
-    val block = Pretty.unbreakable o Pretty.block;
-    val spaced = Pretty.unbreakable o concat;
+    val block = Pretty.unbreakable o Pretty.block; (*
+    val spaced = Pretty.unbreakable o concat; *)
 
-    (* Lu: destructor *)
-    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
+    (* Lu: destructor *) (*
+    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *) *)
 
     fun applify_constraints _ head [] = head (** TODO: what is `Pretty.T` and how to print `head: Pretty.T` *)
      | applify_constraints tyvars head vs = let (** TODO: print `vs` *)
@@ -372,7 +372,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     and print_clause _ _ _ _ [] _ =
       raise Fail "there's a bug in the pattern-match translator"
     | print_clause tyvars some_thm vars p ((target, pattern) :: subps) term =
-      let
+      let (*
         fun print_condition vars conds (constr, (*typargs*) _, range, args) (*p*)_ (*q*)_ target body = let
           val (*destructor*)_ = (mk_dest_name o deresolve) constr
           val (tyco, typargs) = case snd (Code_Thingol.unfold_fun range) of
@@ -394,7 +394,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             else [str target])
           @ [Pretty.block ([(if null conds then (block_enclose ((str "=> {", str "}"))) else (block_enclose ((spaced [str "if/**/", checks, str "=> {"]), str "}")))
             [body]])])
-        end
+        end *)
         val _ = tracing ("print_clause PATTERN="^print_debug_info_iterm pattern^
         "\nSUBPATTERN="^wrap_list (map (fn (_, p) => print_debug_info_iterm p) subps)^
         "\nTERM="^print_debug_info_iterm term)
@@ -412,7 +412,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         | _ `$ _ => (case Code_Thingol.unfold_const_app pattern of
             NONE => raise Fail "bad application in pattern match"
           | SOME (constr, args) => let
-            val ((arg_names, subpatterns, conds), vars') =
+            val (((*arg_names*) _, subpatterns, (*conds*) _), vars') =
               fold_rev (fn term => fn ((ts, rs, cs), vars) => case term of
                   IConst c => let
                   val name = (case Name.invent (snd vars) "c" 1 of [a] => a | _ => error "error_name_c")
@@ -422,8 +422,8 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
                 | _ `$ _ => let
                   val name = (case Name.invent (snd vars) "p" 1 of [a] => a | _ => error "error_name_p")
                   in ((SOME name :: ts, (name, term) :: rs, cs), intro_vars [name] vars) end | _ => error "term error")
-              args (([],[],[]), vars)
-            val q = (case Name.invent (snd vars) "q" 1 of [a] => a | _ => error "error_name_q") (*
+              args (([],[],[]), vars) (*
+            val q = (case Name.invent (snd vars) "q" 1 of [a] => a | _ => error "error_name_q")
             val vars = intro_vars [q] vars *)
             (* val wrapper = print_condition vars' conds (#sym constr, #typargs constr, #range constr, arg_names) p q target *)
             val subpatterns' = subpatterns @ subps
@@ -463,7 +463,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
            (map (fn (pattern,term) =>
                print_clause tyvars some_thm vars p [(target_var, pattern)] term)
            clauses )
-           :: [oneline [str "panic!(\"match failed\")"]]
+           :: [] (*[oneline [str "panic!(\"match failed Hello\")"]] *)
       in if is_stmt
         then Pretty.chunks body
         else wrap_into_lambda tyvars rtyp body
@@ -874,8 +874,8 @@ fun serialize_rust (*gen_stringer *) rust_module rust_version rust_edition undef
 
     (* print modules *)
     fun print_module _ base _ ps = (base, Pretty.chunks2
-      (str ("package " ^ base)
-      :: block_enclose (str "import (", str ")")
+      ((*str ("package " ^ base)
+      :: *) block_enclose (str "use ", str "")
           (map (str o print_rust_string) (get_imports base))
       :: (map snd ps) ))
 
