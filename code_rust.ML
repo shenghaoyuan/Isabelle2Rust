@@ -252,34 +252,39 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
 
-      fun print_constructor (*m*) (*type_name*) _ ((name,_), tys) = let
+      fun print_constructor (*m*) (*type_name*) is_anoy _ ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
-         |> map (fn (name, arg) =>
-              Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","]) (*TODO: `,` has problem: see getTest example*)
+         |> map (if (not is_anoy) then (fn (name, arg) =>
+              Pretty.block [str name, str ": ", print_rust_typ tyvars arg])
+            else (fn (name, arg) =>
+              Pretty.block [print_rust_typ tyvars arg]))(*TODO: `,` has problem: see getTest example*)
+         |> Pretty.commas
         val head = applify_constraints tyvars (str name) vs (*
         val typ = apply_constraints tyvars (str name) tyargs
         val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")" *)
         val constr = block (
           case fields of
           (** if the constructor field is nil, don't print `()`: isabelle's None \<rightarrow> Rust's None *)
-          [] => [head, str ""] @ fields @ [str ","] | 
+          [] => [head, str ""] @ fields| 
           (** if the constructor field has something, print `()`: Some x \<rightarrow> Some (x:T) *)
-          _ => [head, str "("] @ fields @ [str "),"])
+          _ => [head, str "("] @ fields @ [str ")"])
         in constr end
       (*call print_constructor to output definition of single constructor & eliminator*)
       in if not allowed_infinite andalso length cos = 1 then case cos of
         [((name,_),tys)] => let
           val name = deresolve_const name
           val tname = deresolve_tyco tyco
-          val constr = print_constructor (*m*) (SOME name) ((tname, []), tys)
+          val constr = print_constructor (*m*) false (SOME name) ((tname, []), tys)
         in Pretty.chunks [constr] end |
         _ => error "cos is not singleton"
       (*output multi constructors & eliminators，and an "any" sum type to combine constructors*)
       else let
           val constrs = cos
             |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys)) (**TODO: why this line? *)
-            |> map (print_constructor (*m*) NONE)
+            |> map (print_constructor true (*m*) NONE)
+            |> (let fun comma cos = case cos of [t] => [t] 
+             | t::ts => (block [t, str ","]) :: (comma ts) in comma end)
           val names = map (fn ((name,_),_) => (str o deresolve_const) name) cos
           val comment = block (str "// enum type which can be " :: Pretty.commas names)
           val head = block [str "enum " , applify_constraints tyvars ((str o deresolve_tyco) tyco) vs]
@@ -341,9 +346,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             andalso is_constr
           val _ = if is_class_param andalso not (length dict_args = 1)
             then warning "bug in print_app" else ()
-          val applify' = if is_constr
-            then gen_applify true "{" "}"
-            else gen_applify true "(" ")"
+          val applify' = gen_applify true "(" ")"
           val (immediate, curried) = chop l ts
           val symbol = if is_constr
             then (if is_sum_type orelse allowed_infinite then sym else Type_Constructor typ)
@@ -365,8 +368,11 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             end
           val immediate_args = immediate
            |> map (print_go_expr const_syntax tyvars some_thm vars BR)
+          val _ = tracing ("print_app_expr IMMEDIATE="^(wrap_list (map Pretty.string_of immediate_args)))
           val invocation = (if is_class_param orelse is_constr then immediate_args else dict_args @ immediate_args)
-           |> applify' I APP (wrap_type_conversion (Pretty.block [func_name]))
+           |> (case immediate_args of 
+             [] => (fn _ => Pretty.block [func_name]) 
+            | _ => applify' I APP (wrap_type_conversion (Pretty.block [func_name])))
            |> wrap_rust_enumtype_args
           val curried_args = curried
            |> map (enclose "(" ")" o single o print_go_expr const_syntax tyvars some_thm vars NOBR)

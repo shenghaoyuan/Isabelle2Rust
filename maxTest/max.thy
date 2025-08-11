@@ -14,8 +14,8 @@ fun mymax1:: "int \<Rightarrow> int \<Rightarrow> int" where
   True \<Rightarrow> a |
   False \<Rightarrow> b ) 
 "
- (*
-export_code  mymax in Rust *)
+
+export_code  mymax in Rust 
 export_code  mymax in OCaml
 export_code  mymax in Caml
 export_code  mymax1 in Caml
