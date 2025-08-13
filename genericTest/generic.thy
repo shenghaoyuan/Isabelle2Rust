@@ -15,6 +15,11 @@ ML \<open>
   val _ = tracing ("TYVARS: " ^ print_tyvars ctxt1)
 \<close>
 
+ML \<open>
+val pretty_term = Syntax.pretty_term 
+val pwriteln = Pretty.writeln;
+pwriteln (pretty_term @{context} @{term "1::nat"})
+\<close>
 
 
 datatype 'a option = None | Some 'a
