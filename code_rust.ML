@@ -167,11 +167,11 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     val deresolve_inst = deresolve o Class_Instance;
     val deresolve_tyco = deresolve o Type_Constructor;
     val oneline = Pretty.unbreakable o semicolon;
-    val block = Pretty.unbreakable o Pretty.block;
-    val spaced = Pretty.unbreakable o concat;
+    val block = Pretty.unbreakable o Pretty.block; (*
+    val spaced = Pretty.unbreakable o concat; *)
 
-    (* Lu: destructor *)
-    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *)
+    (* Lu: destructor *) (*
+    fun mk_dest_name name =  Long_Name.map_base_name (fn s => s^"_dest") name (** TODO: print `name` *) *)
 
     fun applify_constraints _ head [] = head (** TODO: what is `Pretty.T` and how to print `head: Pretty.T` *)
      | applify_constraints tyvars head vs = let (** TODO: print `vs` *)
@@ -211,7 +211,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
                   str "})() // wrapped statement")
         body
     (* Lu: wrap an expression into a return...*)
-    fun wrap_in_return t = oneline [str "return", t]
+    fun wrap_in_return t = oneline [t] (** [str "return", t]  *)
     fun wrap_if true = wrap_in_return
       | wrap_if false = I
 
@@ -252,28 +252,39 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
 
-      fun print_constructor (*m*) (*type_name*) _ ((name,_), tys) = let
+      fun print_constructor (*m*) (*type_name*) is_anoy _ ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
         val fields = named_fields
-         |> map (fn (name, arg) => Pretty.block [str name, str ": ", print_rust_typ tyvars arg, str ","])
+         |> map (if (not is_anoy) then (fn (name, arg) =>
+              Pretty.block [str name, str ": ", print_rust_typ tyvars arg])
+            else (fn (name, arg) =>
+              Pretty.block [print_rust_typ tyvars arg]))(*TODO: `,` has problem: see getTest example*)
+         |> Pretty.commas
         val head = applify_constraints tyvars (str name) vs (*
         val typ = apply_constraints tyvars (str name) tyargs
         val pretty = name ^ "(" ^ (fold (curry (op ^)) (map (K "%v") fields) "") ^ ")" *)
-        val constr = block ([head, str "{"] @ fields @ [str "},"])
+        val constr = block (
+          case fields of
+          (** if the constructor field is nil, don't print `()`: isabelle's None \<rightarrow> Rust's None *)
+          [] => [head, str ""] @ fields| 
+          (** if the constructor field has something, print `()`: Some x \<rightarrow> Some (x:T) *)
+          _ => [head, str "("] @ fields @ [str ")"])
         in constr end
       (*call print_constructor to output definition of single constructor & eliminator*)
       in if not allowed_infinite andalso length cos = 1 then case cos of
         [((name,_),tys)] => let
           val name = deresolve_const name
           val tname = deresolve_tyco tyco
-          val constr = print_constructor (*m*) (SOME name) ((tname, []), tys)
+          val constr = print_constructor (*m*) false (SOME name) ((tname, []), tys)
         in Pretty.chunks [constr] end |
         _ => error "cos is not singleton"
       (*output multi constructors & eliminators，and an "any" sum type to combine constructors*)
       else let
           val constrs = cos
-            |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys))
-            |> map (print_constructor (*m*) NONE)
+            |> map (fn ((name,_),tys) => ((deresolve_const name, []),tys)) (**TODO: why this line? *)
+            |> map (print_constructor true (*m*) NONE)
+            |> (let fun comma cos = case cos of [t] => [t] 
+             | t::ts => (block [t, str ","]) :: (comma ts) in comma end)
           val names = map (fn ((name,_),_) => (str o deresolve_const) name) cos
           val comment = block (str "// enum type which can be " :: Pretty.commas names)
           val head = block [str "enum " , applify_constraints tyvars ((str o deresolve_tyco) tyco) vs]
@@ -335,9 +346,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             andalso is_constr
           val _ = if is_class_param andalso not (length dict_args = 1)
             then warning "bug in print_app" else ()
-          val applify' = if is_constr
-            then gen_applify true "{" "}"
-            else gen_applify true "(" ")"
+          val applify' = gen_applify true "(" ")"
           val (immediate, curried) = chop l ts
           val symbol = if is_constr
             then (if is_sum_type orelse allowed_infinite then sym else Type_Constructor typ)
@@ -359,8 +368,11 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             end
           val immediate_args = immediate
            |> map (print_go_expr const_syntax tyvars some_thm vars BR)
+          val _ = tracing ("print_app_expr IMMEDIATE="^(wrap_list (map Pretty.string_of immediate_args)))
           val invocation = (if is_class_param orelse is_constr then immediate_args else dict_args @ immediate_args)
-           |> applify' I APP (wrap_type_conversion (Pretty.block [func_name]))
+           |> (case immediate_args of 
+             [] => (fn _ => Pretty.block [func_name]) 
+            | _ => applify' I APP (wrap_type_conversion (Pretty.block [func_name])))
            |> wrap_rust_enumtype_args
           val curried_args = curried
            |> map (enclose "(" ")" o single o print_go_expr const_syntax tyvars some_thm vars NOBR)
@@ -372,7 +384,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     and print_clause _ _ _ _ [] _ =
       raise Fail "there's a bug in the pattern-match translator"
     | print_clause tyvars some_thm vars p ((target, pattern) :: subps) term =
-      let
+      let (*
         fun print_condition vars conds (constr, (*typargs*) _, range, args) (*p*)_ (*q*)_ target body = let
           val (*destructor*)_ = (mk_dest_name o deresolve) constr
           val (tyco, typargs) = case snd (Code_Thingol.unfold_fun range) of
@@ -394,22 +406,25 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             else [str target])
           @ [Pretty.block ([(if null conds then (block_enclose ((str "=> {", str "}"))) else (block_enclose ((spaced [str "if/**/", checks, str "=> {"]), str "}")))
             [body]])])
-        end
+        end *)
+        val _ = tracing ("print_clause PATTERN="^print_debug_info_iterm pattern^
+        "\nSUBPATTERN="^wrap_list (map (fn (_, p) => print_debug_info_iterm p) subps)^
+        "\nTERM="^print_debug_info_iterm term)
       in case pattern
       (*const pattern*)
         of IConst c =>
           let
             val checks = print_app false const_syntax tyvars some_thm vars NOBR (c, [])
             val body =  (if subps = []
-              then print_go_term const_syntax tyvars some_thm vars NOBR term
-              else print_clause tyvars some_thm vars p subps term)
-          in Pretty.block [checks, str" => ", body, str"/*Tag: Pattern Matching1*/"]
+              then concat [str " =>", print_go_term const_syntax tyvars some_thm vars NOBR term]
+              else concat [str ", ", print_clause tyvars some_thm vars p subps term])
+          in Pretty.block [checks, body, str"/*Tag: Pattern Matching1*/"]
           end
       (*constructor application pattern*)
         | _ `$ _ => (case Code_Thingol.unfold_const_app pattern of
             NONE => raise Fail "bad application in pattern match"
           | SOME (constr, args) => let
-            val ((arg_names, subpatterns, conds), vars') =
+            val (((*arg_names*) _, subpatterns, (*conds*) _), vars') =
               fold_rev (fn term => fn ((ts, rs, cs), vars) => case term of
                   IConst c => let
                   val name = (case Name.invent (snd vars) "c" 1 of [a] => a | _ => error "error_name_c")
@@ -419,15 +434,16 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
                 | _ `$ _ => let
                   val name = (case Name.invent (snd vars) "p" 1 of [a] => a | _ => error "error_name_p")
                   in ((SOME name :: ts, (name, term) :: rs, cs), intro_vars [name] vars) end | _ => error "term error")
-              args (([],[],[]), vars)
-            val q = (case Name.invent (snd vars) "q" 1 of [a] => a | _ => error "error_name_q") (*
+              args (([],[],[]), vars) (*
+            val q = (case Name.invent (snd vars) "q" 1 of [a] => a | _ => error "error_name_q")
             val vars = intro_vars [q] vars *)
-            val wrapper = print_condition vars' conds (#sym constr, #typargs constr, #range constr, arg_names) p q target
+            (* val wrapper = print_condition vars' conds (#sym constr, #typargs constr, #range constr, arg_names) p q target *)
             val subpatterns' = subpatterns @ subps
+            val checks = print_app false const_syntax tyvars some_thm vars NOBR (constr, args)
             val body = (if subpatterns' = []
-              then print_go_term const_syntax tyvars some_thm vars' NOBR term
-              else print_clause tyvars some_thm vars' p subpatterns' term)
-          in Pretty.block [wrapper body, str"/*Tag: Pattern Matching2*/"]
+              then concat [str " =>",print_go_term_app const_syntax tyvars some_thm vars' NOBR term]
+              else concat [str ", ", print_clause tyvars some_thm vars' p subpatterns' term])
+          in Pretty.block [checks, body, str"/*Tag: Pattern Matching2*/"]
           end)
       (*var pattern*)
         | IVar v => let
@@ -453,11 +469,13 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         val p = (case Name.invent (snd vars) "m" 1 of [a] => a | _ => error "error_name_m")
         val vars = intro_vars [p] vars
         val target = print_go_expr const_syntax tyvars some_thm vars NOBR target
-        val assignment = oneline [str target_var, str ":=", target]
+        val assignment = oneline [str "let", str target_var, str "=", target]
         val body = assignment
-           :: map (fn (pattern,term) =>
-               wrap_new_scope (print_clause tyvars some_thm vars p [(target_var, pattern)] term))
-           clauses @ [oneline [str "panic!(\"match failed\")"]]
+           :: block_enclose (concat [str "match", str target_var, str "{"] , str "}")
+           (map (fn (pattern,term) =>
+               print_clause tyvars some_thm vars p [(target_var, pattern)] term)
+           clauses )
+           :: [] (*[oneline [str "panic!(\"match failed Hello\")"]] *)
       in if is_stmt
         then Pretty.chunks body
         else wrap_into_lambda tyvars rtyp body
@@ -475,10 +493,12 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
     (* go has a distinction between expressions and statements which Thingol doesn't, so we just
        periodically have to wrap things into a lambda & return *)
     and print_go_term const_syntax tyvars some_thm vars fxy iterm =
-        print_go_term_gen true const_syntax tyvars some_thm vars fxy iterm
+        print_go_term_gen false true const_syntax tyvars some_thm vars fxy iterm
+    and print_go_term_app const_syntax tyvars some_thm vars fxy iterm =
+        print_go_term_gen true true const_syntax tyvars some_thm vars fxy iterm
     and print_go_expr const_syntax tyvars some_thm vars fxy t =
-        print_go_term_gen false const_syntax tyvars some_thm vars fxy t
-    and print_go_term_gen is_stmt const_syntax tyvars some_thm vars fxy t = 
+        print_go_term_gen true false const_syntax tyvars some_thm vars fxy t
+    and print_go_term_gen is_name_invent is_stmt const_syntax tyvars some_thm vars fxy t = 
     let val _ = tracing ("TERM in go_term: " ^ print_debug_info_iterm t) in 
     case t of
       IConst const (*(const as {sym,...})*) => let (*ysh: const is a record, it must have a sym field *)
@@ -489,8 +509,9 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
        | _ => wrap_if is_stmt
             (applify "(" ")" (print_go_expr const_syntax tyvars some_thm vars NOBR) fxy
                     (print_go_expr const_syntax tyvars some_thm vars BR t1) [t2]))
-    | IVar NONE => raise Fail "can't return a variable with no name!"
-    | IVar (SOME v) => wrap_if is_stmt (str (lookup_var vars v))
+    | IVar NONE => let val _ = warning "return a variable with no name" in str"_" end(*raise Fail "can't return a variable with no name!"*)
+    | IVar (SOME v) => (case is_name_invent of true => wrap_if is_stmt (str (lookup_var vars v))
+      | false => wrap_if is_stmt (str v))
     | (params, tys) `|=> (t, rty) => let
         val vars' = intro_vars (map_filter I [params]) vars;
         val func_head = print_func_head tyvars vars' NONE [] [] [params] [tys] (print_rust_typ tyvars rty)
@@ -584,7 +605,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
         val vars2 = intro_vars (map_filter I params) vars1;
         val (tys', ty') = Code_Thingol.unfold_fun_n (length params) ty;
         fun print_rhs is_stmt vars' ((_, t), (some_thm, _)) =
-          print_go_term_gen is_stmt const_syntax tyvars some_thm vars' NOBR t;
+          print_go_term_gen true is_stmt const_syntax tyvars some_thm vars' NOBR t;
         val p = (case Name.invent (snd vars2) "m" 1 of [a] => a | _ => error "error_name_pm")
         val vars3 = intro_vars [p] vars2
         fun print_fun_clause ((targets, t), (some_thm, _)) =
@@ -867,8 +888,8 @@ fun serialize_rust (*gen_stringer *) rust_module rust_version rust_edition undef
 
     (* print modules *)
     fun print_module _ base _ ps = (base, Pretty.chunks2
-      (str ("package " ^ base)
-      :: block_enclose (str "import (", str ")")
+      ((*str ("package " ^ base)
+      :: *) block_enclose (str "use ", str "")
           (map (str o print_rust_string) (get_imports base))
       :: (map snd ps) ))
 

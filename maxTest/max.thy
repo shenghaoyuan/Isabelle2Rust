@@ -1,13 +1,24 @@
 theory max
   imports
   "Rust.Rust_Setup"
+  "Rust.OML_Setup"
 begin
 
 fun mymax:: "int \<Rightarrow> int \<Rightarrow> int" where
 " mymax a b = (if a > b then a else b) 
 "
 
-export_code  mymax in Rust
+fun mymax1:: "int \<Rightarrow> int \<Rightarrow> int" where
+" mymax1 a b = (
+  case a > b of
+  True \<Rightarrow> a |
+  False \<Rightarrow> b ) 
+"
+
+export_code  mymax in Rust 
+export_code  mymax in OCaml
+export_code  mymax in Caml
+export_code  mymax1 in Caml
  (* module_name maxTest *)
 
                     
