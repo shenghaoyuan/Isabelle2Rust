@@ -577,6 +577,8 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
 
 
     fun print_go_func (*const_syntax*) _ reserved const vs ty [] =
+    (* Lu: Generates a Rust function for a constant with no defining equations,
+   producing a proper signature and a panic!() placeholder body. *)
           let
             val (tys, ty') = Code_Thingol.unfold_fun ty;
             val params = Name.invent (snd reserved) "a" (length tys);
