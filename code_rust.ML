@@ -249,16 +249,24 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
       val ctxt = Name.declare p (Name.declare m (snd reserved)) (*
       val tyargs = map ITyVar vs
       val self = tyco `%% tyargs *)
+      val _ = tracing ("print_rust_typedef TYCO="^tyco)
       val tyvars = intro_tyvars (map (rpair []) vs) reserved;
       val allowed_infinite = List.exists (fn n => n = tyco) infinite_types
+      val _ = tracing ("print_rust_typedef INF_TYPES="^(String.concatWith ", " infinite_types))
 
       fun print_constructor (*m*) (*type_name*) is_anoy _ ((name,_), tys) = let
         val named_fields = Name.invent_names ctxt "A" tys
+        val _ = tracing ("print_constructor FIELDS="^wrap_list (map (fn (field as (n,t)) => wrap_args[n, print_debug_info_itype t]) named_fields) )
+        fun is_inf (field as (_, (subtyco `%% _))) = (tyco = subtyco) (*recursive definition*)
+        val exist_boxed = List.exists is_inf named_fields
         val fields = named_fields
          |> map (if (not is_anoy) then (fn (name, arg) =>
               Pretty.block [str name, str ": ", print_rust_typ tyvars arg])
-            else (fn (name, arg) =>
-              Pretty.block [print_rust_typ tyvars arg]))(*TODO: `,` has problem: see getTest example*)
+            else (fn (name, (arg as (subtyco `%% _))) =>
+              let val arg' = (if not (tyco = subtyco) then (print_rust_typ tyvars arg)
+                else (Pretty.block [str "Box<", print_rust_typ tyvars arg, str">"]))
+              in
+              Pretty.block [arg'] end))(*TODO: `,` has problem: see getTest example*)
          |> Pretty.commas
         val head = applify_constraints tyvars (str name) vs (*
         val typ = apply_constraints tyvars (str name) tyargs
@@ -575,7 +583,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
             val (tys, ty') = Code_Thingol.unfold_fun ty;
             val params = Name.invent (snd reserved) "a" (length tys);
             val tyvars = intro_tyvars vs reserved;
-            val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)   (* Lu: debug*)
+            (* val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)   Lu: debug *)
             val vars = intro_vars params tyvars;
         val dict_args = print_dict_args tyvars vs
         val head = print_func_head tyvars vars ((SOME o Constant) const) (map fst vs) dict_args (map SOME params) tys (print_rust_typ tyvars ty');
@@ -591,7 +599,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
           |> intro_base_names
                (is_none o tyco_syntax) deresolve_tyco tycos
           |> intro_tyvars vs;
-        val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars)
+        (* val _ = tracing ("TYVARS in go_func: " ^ print_tyvars tyvars) *)
         val simple = case eqs
          of [((ts, _), _)] => forall Code_Thingol.is_IVar ts
           | _ => false;
