@@ -36,8 +36,33 @@ $ npm install -g commitizen
 ```
 Then, you can use `git cz` to commit your code in terminal globally.
 
+### Configuration
+
+This project is already configured for Commitizen in `package.json`:
+
+```json
+"scripts": {
+  "cz": "git-cz"
+},
+"devDependencies": {
+  "commitizen": "^4.3.1",
+  "cz-conventional-changelog": "^3.3.0"
+},
+"config": {
+  "commitizen": {
+    "path": "./node_modules/cz-conventional-changelog"
+  }
+}
+```
+
+- `scripts.cz`: run `npm run cz` as a shortcut
+- `cz-conventional-changelog`: adapter for Conventional Commits
+- `config.commitizen.path`: tells Commitizen which adapter to use
+
 ### Usage
 - When ready to commit changes, instead of `git commit`, use `git cz` or `npm run cz`.
-- git cz will prompt you to select the type of commit (e.g., feat, fix, docs, style, refactor, test).
+- `git cz` will prompt you to select the type of commit (e.g., feat, fix, docs, style, refactor, test).
 - Enter a scope, and enter a short, descriptive title for the commit. For example, Add user login function.
 - Optionally provide a detailed description of the changes.
+
+### 
