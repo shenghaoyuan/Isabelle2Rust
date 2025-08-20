@@ -144,6 +144,7 @@ datatype rust_stmt = Fun of typscheme * ((iterm list * iterm) * (thm option * bo
 fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const_syntax reserved
     args_num is_sum_type is_class_param is_constr deresolve (*(deresolve, deresolve_full)*) =
   let
+    val _ = tracing "print_rust_stmt IN"
     (*Pretty-print formating helpers*)
     fun lookup_tyvar tyvars = lookup_var tyvars; (** TODO: explain this function + insert a function to print `tyvars: Code_Printer.var_ctxt` *)
     fun intro_tyvars vs = intro_vars (map fst vs); (** TODO: print `vs` *)
@@ -183,7 +184,7 @@ fun print_rust_stmt (*gen_stringer*) undefineds infinite_types tyco_syntax const
 
     fun print_rust_typ tyvars (tyco `%% tys) =
       let
-        val _ = tracing ("TYCO in rust_typ: " ^ tyco ^ "\nTYS in rust_typ: " ^ print_tys tys)
+        val _ = tracing ("print_rust_typ TYCO=" ^ tyco ^ "\nTYS=" ^ print_tys tys)
       in
         (case tyco_syntax tyco of (** TODO: print `tyco` and `tys` *)
           NONE => apply_constraints tyvars ((str o deresolve_tyco) tyco) tys
