@@ -4,6 +4,9 @@ Use Commitizen to replace `git commit` with an interactive, standardized commit 
 
 ---
 
+## Require
+- [node](https://nodejs.org/en/) >= 10
+
 ## Quick Start
 
 ```bash
