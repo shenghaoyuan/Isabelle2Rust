@@ -24,6 +24,8 @@ infixr 5 @|;
 
 val target = "Rust";
 
+(** print debug info **)
+
 fun wrap_args sl = "(" ^ String.concatWith ", " sl ^ ")"
 fun wrap_list sl = "[" ^ String.concatWith ", " sl ^ "]"
 fun wrap_struct sl = "{" ^ String.concatWith ", " sl ^ "}"
@@ -147,17 +149,27 @@ val print_rust_string =
   in quote o translate_string char end;
 
 fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
-  is_inftype =
+  is_inf_typeco is_invdependent_typecos =
   let
     val _ = tracing "print_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
-    fun print_tyco_expr (sym, []) = (str o deresolve) sym
-      | print_tyco_expr (sym, [ty]) =
-          concat [print_typ BR ty, (str o deresolve) sym]
-      | print_tyco_expr (sym, tys) =
-          concat [enum "," "(" ")" (map (print_typ BR) tys), (str o deresolve) sym]
+    fun box s = "Box<"^s^">"
+    fun deref s = "*"^s
+    fun print_tyco_expr (sym, tys) = 
+      let
+        val isinf = is_inf_typeco (sym, tys)
+        val tyconame = if isinf then box (deresolve sym)
+          else deresolve sym
+      in
+        case tys  
+       of [] => str tyconame
+        | [ty] =>
+          concat [print_typ BR ty, str tyconame]
+        | tys =>
+          concat [enum "," "(" ")" (map (print_typ BR) tys), str tyconame]
+      end
     and print_typ fxy (tyco `%% tys) = (case tyco_syntax tyco
          of NONE => print_tyco_expr (Type_Constructor tyco, tys)
           | SOME (_, print) => print print_typ fxy tys)
@@ -223,7 +235,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       (print_term is_pseudo_fun) const_syntax some_thm vars
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
     and print_case _ _ _ _ { clauses = [], ... } =
-          (concat o map str) ["failwith", "\"empty case\""]
+          (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
       | print_case is_pseudo_fun some_thm vars _ (case_expr as { clauses = [_], ... }) =
           let
             val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
@@ -234,7 +246,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   [str "let", p, str "=", print_term is_pseudo_fun some_thm vars NOBR t, str "in"])
             val (ps, vars') = fold_map print_let binds vars;
           in
-            brackets [str "Hello", Pretty.chunks ps, print_term is_pseudo_fun some_thm vars' NOBR body]
+            brackets [Pretty.chunks ps, print_term is_pseudo_fun some_thm vars' NOBR body]
           end
       | print_case is_pseudo_fun some_thm vars _ { term = t, typ = _, clauses = clause :: clauses, ... } =
           let
@@ -256,21 +268,23 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       let
         fun print_debug_info_co ((co, vs), tys) = wrap_args[wrap_args [co, wrap_list(vs)], wrap_list (map print_debug_info_itype tys)]
         val _ = tracing ("print_datatype_decl TYCO=" ^ tyco ^ "\nVS=" ^ wrap_list vs ^ "\nCOS=" ^ wrap_list (map print_debug_info_co cos))
-        val is_infinite = is_inftype (Type_Constructor tyco)
         fun print_co ((co, _), []) = str (deresolve_const co)
-          | print_co ((co, _), tys) = concat [str (deresolve_const co), str "of",
-              enum " *" "" "" (map (print_typ (INFX (2, X))) tys)];
+          | print_co ((co, _), tys) = concat [str (deresolve_const co), str "(",
+              enum " *" "" "" (map (print_typ (INFX (2, X))) tys), str")"];
       in
-        concat (
-          str definer
-          :: print_tyco_expr (Type_Constructor tyco, map ITyVar vs)
-          :: str "="
-          :: separate (str "|") (map print_co cos)
-        )
+        concat (flat [
+          [str definer,
+          print_tyco_expr (Type_Constructor tyco, map ITyVar vs),
+          str "{\n"],
+          separate (str ",\n") (map print_co cos),
+          [str "}"]
+        ])
       end;
     fun print_def is_pseudo_fun needs_typ definer
           (ML_Function (const, (vs_ty as (vs, ty), eqs))) =
           let
+            val _ = tracing ("print_def FUN of " ^const^ " = "^
+              print_debug_info_thingol_stmt (Code_Thingol.Fun ((vs_ty,eqs),NONE)))
             fun print_eqn ((ts, t), (some_thm, _)) =
               let
                 val vars = reserved
@@ -376,20 +390,21 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     (*fun print_stmt: Code_Namespace.export -> ml_stmt -> Pretty.T list * Pretty.T*)
      fun print_stmt _ (ML_Exc (const, (vs_ty, n))) = pair
           [print_val_decl print_typscheme (Constant const, vs_ty)]
-          ((doublesemicolon o map str) (
+          (String.concat (
             "let"
             :: deresolve_const const
             :: replicate n "_"
             @ "="
             :: "failwith"
             @@ print_rust_string const
-          ))
+          ) 
+          |> str)
       | print_stmt _ (ML_Val binding) =
           let
             val (sig_p, p) = print_def (K false) true "let" binding
           in pair
             [sig_p]
-            (doublesemicolon [p])
+            (p)
           end
       | print_stmt _ (ML_Funs ((export, binding) :: exports_bindings, pseudo_funs)) =
           let
@@ -407,7 +422,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in pair
             (map_filter (fn (export, p) => if Code_Namespace.not_private export then SOME p else NONE)
               ((export :: map fst exports_bindings) ~~ sig_ps))
-            (Pretty.chunks (ps @ doublesemicolon [p] :: pseudo_ps))
+            (Pretty.chunks (ps @ p :: pseudo_ps))
           end
      | print_stmt _ (ML_Datas [(tyco, (vs, []))]) =
           let
@@ -415,20 +430,19 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in
             pair
             [concat [str "type", ty_p]]
-            (doublesemicolon [str "type", ty_p, str "=", str "EMPTY__"])
+            (concat [str "type", ty_p, str "=", str "EMPTY__"])
           end
-     | print_stmt export (ML_Datas (data :: datas)) = 
+     | print_stmt export (ML_Datas (datas)) = 
           let
-            val decl_ps = print_datatype_decl "type" data
-              :: map (print_datatype_decl "and") datas;
+            val decl_ps = map (print_datatype_decl "enum") datas;
             val (ps, p) = split_last decl_ps;
           in pair
             (if Code_Namespace.is_public export
               then decl_ps
               else map (fn (tyco, (vs, _)) =>
                 concat [str "type", print_tyco_expr (Type_Constructor tyco, map ITyVar vs)])
-                (data :: datas))
-            (Pretty.chunks (ps @| doublesemicolon [p]))
+                (datas))
+            (Pretty.chunks (ps @| p))
           end
      | print_stmt export (ML_Class (class, (v, (classrels, classparams)))) =
           let
@@ -460,7 +474,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               then [type_decl_p] (*work around weakness in export calculation*)
               else [concat [str "type", print_dicttyp (class, ITyVar v)]])
             (Pretty.chunks (
-              doublesemicolon [type_decl_p]
+              type_decl_p
               :: map print_classparam_proj classparams
             ))
           end;
@@ -490,27 +504,71 @@ in Literals {
   infix_cons = (6, "::")
 } end;
 
+(** namify **)
 
+fun variant_snake_case s ctxt =
+  let
+    val cs = String.explode s;
+    fun to_snake_case cs =
+      let
+        fun is_upper c = Char.isUpper c;
+        fun is_lower c = Char.isLower c;
+        fun aux [] = []
+          | aux [c] = [Char.toLower c]
+          | aux (c1 :: c2 :: cs) =
+              if is_upper c1 andalso is_lower c2 then
+                #"_" :: Char.toLower c1 :: aux (c2 :: cs)
+              else if is_upper c1 andalso is_upper c2 then
+                Char.toLower c1 :: aux (c2 :: cs)
+              else
+                Char.toLower c1 :: aux (c2 :: cs)
+        fun auxx [] = []
+          | auxx [c] = [Char.toLower c]
+          | auxx (c :: cs) = Char.toLower c :: aux cs
+      in auxx cs end;
+    val s_snake = to_snake_case cs
+  in
+    ctxt |> Name.variant (String.implode s_snake)
+  end;
+
+fun variant_upper_camel_case s ctxt =
+  let
+    val cs = String.explode s;
+    fun to_upper_camel_case cs =
+      let
+        fun aux [] = []
+          | aux [c] = [c]
+          | aux (c1 :: c2 :: cs) =
+            if (c1 = #"_") then Char.toUpper c2 :: aux cs
+            else c1 :: aux (c2 :: cs)
+        fun auxx [] = []
+          | auxx [c] = [Char.toUpper c]
+          | auxx (c :: cs) = Char.toUpper c :: aux cs
+      in auxx cs end;
+    val s_camel = to_upper_camel_case cs
+  in
+    ctxt |> Name.variant (String.implode s_camel)
+  end;
 
 (** SML/Caml generic part **)
 
 fun ml_program_of_program ctxt module_name reserved identifiers =
   let
-    fun namify_const upper base (nsp_const, nsp_type) =
+    fun namify_const variant base (nsp_const, nsp_type) =
       let
-        val (base', nsp_const') = Name.variant (Name.enforce_case upper base) nsp_const
+        val (base', nsp_const') = variant base nsp_const
       in (base', (nsp_const', nsp_type)) end;
-    fun namify_type base (nsp_const, nsp_type) =
+    fun namify_type variant base (nsp_const, nsp_type) =
       let
-        val (base', nsp_type') = Name.variant (Name.enforce_case false base) nsp_type
+        val (base', nsp_type') = variant base nsp_type
       in (base', (nsp_const, nsp_type')) end;
-    fun namify_stmt (Code_Thingol.Fun _) = namify_const false
-      | namify_stmt (Code_Thingol.Datatype _) = namify_type
-      | namify_stmt (Code_Thingol.Datatypecons _) = namify_const true
-      | namify_stmt (Code_Thingol.Class _) = namify_type
-      | namify_stmt (Code_Thingol.Classrel _) = namify_const false
-      | namify_stmt (Code_Thingol.Classparam _) = namify_const false
-      | namify_stmt (Code_Thingol.Classinst _) = namify_const false;
+    fun namify_stmt (Code_Thingol.Fun _) = namify_const variant_snake_case
+      | namify_stmt (Code_Thingol.Datatype _) = namify_type variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Datatypecons _) = namify_const variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Class _) = namify_type variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classrel _) = namify_const variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classparam _) = namify_const variant_upper_camel_case
+      | namify_stmt (Code_Thingol.Classinst _) = namify_const variant_upper_camel_case;
     fun ml_binding_of_stmt (sym as Constant const, (export, Code_Thingol.Fun ((tysm as (vs, ty), raw_eqs), _))) =
           let
             val eqs = filter (snd o snd) raw_eqs;
@@ -604,7 +662,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
-    fun lookup_dependent_types_h program (sym as (Type_Constructor typename)) dpdncs =
+    fun lookup_dependent_types_h program sym dpdncs =
       let 
         fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
             ([], L2) => L2
@@ -652,10 +710,16 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
         else lookup_dependent_types_h program sym snd_dpdncs
       end;
     fun lookup_dependent_types program sym = lookup_dependent_types_h program sym [];
-    fun is_inftype (sym as (Type_Constructor typename)) =
+    fun is_inf_typeco (sym, tys) =
       let
         val dpdncs = lookup_dependent_types program sym
-        val _ = tracing ("is_inftype TYPE="^typename^" DEPENDCENIES="^ wrap_list dpdncs)
+        val typename = (fn (Type_Constructor x) => x) sym
+        fun dest_itype (ITyVar vn) = vn
+          | dest_itype (v `%% vns) = v 
+        val types = map dest_itype tys
+        val res = List.exists (fn s => s = typename) dpdncs
+        val _ = tracing ("is_inftype TYPECO="^(print_debug_info_sym sym)^" DEPENDCENIES="^ (wrap_list dpdncs)
+        ^"\nTYPES="^ (wrap_list types)^" RES="^Bool.toString res)
       in
         List.exists (fn s => s = typename) dpdncs
       end;
@@ -679,7 +743,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     fun print_stmt prefix_fragments (_, (export, stmt)) = (print_ml_stmt
       tyco_syntax const_syntax (make_vars reserved_syms)
       (Code_Thingol.is_constr program) (deresolver prefix_fragments)
-      is_inftype)
+      is_inf_typeco is_invdependent_typecos)
       export stmt
       |> apfst (fn decl => if Code_Namespace.not_private export then SOME decl else NONE);
 
