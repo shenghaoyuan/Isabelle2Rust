@@ -17,15 +17,24 @@ code_printing
 subsection \<open>bool and logic connectives\<close>
 code_printing
   type_constructor bool \<rightharpoonup> (Rust) "bool"
-| constant "False::bool" \<rightharpoonup> (Rust) "false"
-| constant "True::bool" \<rightharpoonup> (Rust) "true" (*
-| type_constructor Int.int \<rightharpoonup> (Rust) "u64" *)
+| constant False \<rightharpoonup> (Rust) "false"
+| constant True \<rightharpoonup> (Rust) "true"
 
-|  constant HOL.Not \<rightharpoonup> (Rust) "(!(_))"
-| constant HOL.conj \<rightharpoonup> (Rust) infixl 1 "&&"
-| constant HOL.disj \<rightharpoonup> (Rust) infixl 0 "||"
-| constant HOL.implies \<rightharpoonup> (Rust) "((!(_)) || (_))"
-| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Rust) "(_ == _)"
+code_reserved
+  (Rust) bool
+
+code_printing
+  constant Not \<rightharpoonup> (Rust) "(!(_))"
+| constant conj \<rightharpoonup> (Rust) infixl 1 "&&"
+| constant disj \<rightharpoonup> (Rust) infixl 0 "||"
+| constant implies \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else true)"
+| constant HOL.If \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else (_))"
+
+code_printing
+  type_class equal \<rightharpoonup> (Rust) "(_ == _)"
+| constant HOL.equal \<rightharpoonup> (Haskell) infix 4 "=="
+| constant HOL.eq \<rightharpoonup> (Haskell) infix 4 "=="
+
 (*constant HOL.Not \<rightharpoonup> (Rust) "'! _"*)
 (*| constant HOL.implies \<rightharpoonup> (Rust) "!('!((_)) || (_))"*)
 (*| constant "HOL.equal :: bool \<Rightarrow> bool \<Rightarrow> bool" \<rightharpoonup> (Rust) infix 4 "=="*)
