@@ -157,23 +157,25 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     val deresolve_inst = deresolve o Class_Instance;
     fun box s = "Box<"^s^">"
     fun deref s = "*"^s
-    fun print_tyco_expr (sym, tys) = 
+    fun print_tyco_expr_gen is_head (sym, tys) = 
       let
         val isinf = is_inf_typeco (sym, tys)
-        val tyconame = if isinf then box (deresolve sym)
+        val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
           else deresolve sym
       in
         case tys  
        of [] => str tyconame
         | [ty] =>
-          concat [print_typ BR ty, str tyconame]
+          concat [print_typ_gen is_head BR ty, str tyconame]
         | tys =>
-          concat [enum "," "(" ")" (map (print_typ BR) tys), str tyconame]
+          concat [enum "," "(" ")" (map (print_typ_gen is_head BR) tys), str tyconame]
       end
-    and print_typ fxy (tyco `%% tys) = (case tyco_syntax tyco
-         of NONE => print_tyco_expr (Type_Constructor tyco, tys)
-          | SOME (_, print) => print print_typ fxy tys)
-      | print_typ _ (ITyVar v) = str ("'" ^ v);
+    and print_typ_gen is_head fxy (tyco `%% tys) = (case tyco_syntax tyco
+         of NONE => print_tyco_expr_gen is_head (Type_Constructor tyco, tys)
+          | SOME (_, print) => print (print_typ_gen is_head) fxy tys)
+      | print_typ_gen is_head fxy (ITyVar v) = str ("'" ^ v);
+    fun print_tyco_expr (sym, tys) = print_tyco_expr_gen true (sym, tys);
+    fun print_typ fxy ty = print_typ_gen true fxy ty;
     fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
     fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
       (map_filter (fn (v, sort) =>
@@ -270,7 +272,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         val _ = tracing ("print_datatype_decl TYCO=" ^ tyco ^ "\nVS=" ^ wrap_list vs ^ "\nCOS=" ^ wrap_list (map print_debug_info_co cos))
         fun print_co ((co, _), []) = str (deresolve_const co)
           | print_co ((co, _), tys) = concat [str (deresolve_const co), str "(",
-              enum " *" "" "" (map (print_typ (INFX (2, X))) tys), str")"];
+              enum " *" "" "" (map (print_typ_gen false (INFX (2, X))) tys), str")"];
       in
         concat (flat [
           [str definer,
