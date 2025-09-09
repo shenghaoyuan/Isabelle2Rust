@@ -1,7 +1,6 @@
 theory max
   imports
-  "Rust.Rust_Setup"
-  "Rust.OML_Setup"
+  Main "Rust.Rust_Setup"
 begin
 
 fun mymax:: "int \<Rightarrow> int \<Rightarrow> int" where
@@ -15,14 +14,10 @@ fun mymax1:: "int \<Rightarrow> int \<Rightarrow> int" where
   False \<Rightarrow> b )
 "
 
-<<<<<<< HEAD
-export_code  mymax in Rust
-=======
-export_code  mymax in Rust 
->>>>>>> b450d602498a6fc76f255d7690fe3abcd8208260
+
 export_code  mymax in OCaml
-export_code  mymax in Caml
-export_code  mymax1 in Caml
+export_code  mymax in Rust
+export_code  mymax1 in Rust
  (* module_name maxTest *)
 
                     

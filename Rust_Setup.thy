@@ -3,7 +3,7 @@ theory Rust_Setup
     (*Go.Go_Setup*) (** refer *)
 begin
 
-ML_file \<open>code_OML.ML\<close>
+ML_file \<open>code_rust.ML\<close>
 
 code_identifier
   code_module Code_Target_Nat \<rightharpoonup> (Rust) Arith

@@ -6,32 +6,32 @@ begin
 ML_file \<open>code_OML.ML\<close>
 
 code_identifier
-  code_module Code_Target_Nat \<rightharpoonup> (Caml) Arith
-| code_module Code_Target_Int \<rightharpoonup> (Caml) Arith
-| code_module Code_Numeral \<rightharpoonup> (Caml) Arith
+  code_module Code_Target_Nat \<rightharpoonup> (Rust) Arith
+| code_module Code_Target_Int \<rightharpoonup> (Rust) Arith
+| code_module Code_Numeral \<rightharpoonup> (Rust) Arith
 
 code_printing
-  constant Code.abort \<rightharpoonup> (Caml) "panic!( _ )"
+  constant Code.abort \<rightharpoonup> (Rust) "panic!( _ )"
 
 (* Bools *)
 subsection \<open>bool and logic connectives\<close>
 code_printing
-  type_constructor bool \<rightharpoonup> (Caml) "bool"
-| constant False \<rightharpoonup> (Caml) "false"
-| constant True \<rightharpoonup> (Caml) "true"
+  type_constructor bool \<rightharpoonup> (Rust) "bool"
+| constant False \<rightharpoonup> (Rust) "false"
+| constant True \<rightharpoonup> (Rust) "true"
 
 code_reserved
-  (Caml) bool
+  (Rust) bool
 
 code_printing
-  constant Not \<rightharpoonup> (Caml) "(!(_))"
-| constant conj \<rightharpoonup> (Caml) infixl 1 "&&"
-| constant disj \<rightharpoonup> (Caml) infixl 0 "||"
-| constant implies \<rightharpoonup> (Caml) "!(if (_)/ then (_)/ else true)"
-| constant HOL.If \<rightharpoonup> (Caml) "!(if (_)/ then (_)/ else (_))"
+  constant Not \<rightharpoonup> (Rust) "(!(_))"
+| constant conj \<rightharpoonup> (Rust) infixl 1 "&&"
+| constant disj \<rightharpoonup> (Rust) infixl 0 "||"
+| constant implies \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else true)"
+| constant HOL.If \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else (_))"
 
 code_printing
-  type_class equal \<rightharpoonup> (Caml) "(_ == _)"
+  type_class equal \<rightharpoonup> (Rust) "(_ == _)"
 | constant HOL.equal \<rightharpoonup> (Haskell) infix 4 "=="
 | constant HOL.eq \<rightharpoonup> (Haskell) infix 4 "=="
 
