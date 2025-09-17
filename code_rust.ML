@@ -156,14 +156,14 @@ val print_rust_string =
   in quote o translate_string char end;
 
 fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
-  is_inf_typeco is_invdependent_typecos =
+  is_inf_typeco _ (*is_invdependent_typecos*) =
   let
     val _ = tracing "print_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
     fun box s = "Box<"^s^">"
-    fun deref s = "*"^s
+    fun deref s = "*"^s val _ = deref
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let
         val isinf = is_inf_typeco (sym, tys)
@@ -180,7 +180,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     and print_typ_gen is_head fxy (tyco `%% tys) = (case tyco_syntax tyco
          of NONE => print_tyco_expr_gen is_head (Type_Constructor tyco, tys)
           | SOME (_, print) => print (print_typ_gen is_head) fxy tys)
-      | print_typ_gen is_head fxy (ITyVar v) = str ("'" ^ v);
+      | print_typ_gen _ (*is_head*) _ (*fxy*) (ITyVar v) = str ("'" ^ v);
     fun print_tyco_expr (sym, tys) = print_tyco_expr_gen true (sym, tys);
     fun print_typ fxy ty = print_typ_gen true fxy ty;
     fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
@@ -621,7 +621,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
           | _ => case some_value_sym
              of NONE => ML_Funs ([(export', binding)], [])
               | SOME (sym, true) => ML_Funs ([(export, binding)], [sym])
-              | SOME (sym, false) => ML_Val binding
+              | SOME (_(*sym*), false) => ML_Val binding
       in SOME (export, ml_stmt) end;
     fun modify_funs stmts = single (SOME
       (Code_Namespace.Opaque, ML_Funs (map_split ml_binding_of_stmt stmts |> (apsnd o map_filter o Option.map) fst)))
@@ -675,7 +675,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
 
 fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     { module_name, reserved_syms, identifiers, includes,
-      class_syntax, tyco_syntax, const_syntax } program exports =
+      class_syntax = _, tyco_syntax, const_syntax } program exports =
   let
     val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node (Code_Symbol.Graph.dest program)))
 
@@ -715,7 +715,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
         fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
         fun dest_itype (ITyVar vn) = [vn]
           | dest_itype (v `%% vns) = v::(List.concat(map dest_itype vns))
-        fun dest_types (Code_Thingol.Datatype (vns, cos)) = 
+        fun dest_types (Code_Thingol.Datatype (_(*vns*), cos)) = 
           cos  
           |> map (fn ((_, _), ityps) => ityps)
           |> List.concat
@@ -739,9 +739,10 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     fun is_inf_typeco (sym, tys) =
       let
         val dpdncs = lookup_dependent_types program sym
-        val typename = (fn (Type_Constructor x) => x) sym
+        val typename = (fn (Type_Constructor x) => x
+          | _ => raise Fail "not a Type_construtor") sym
         fun dest_itype (ITyVar vn) = vn
-          | dest_itype (v `%% vns) = v 
+          | dest_itype (v `%% _(*vns*)) = v 
         val types = map dest_itype tys
         val res = List.exists (fn s => s = typename) dpdncs
         val _ = tracing ("is_inftype TYPECO="^(print_debug_info_sym sym)^" DEPENDCENIES="^ (wrap_list dpdncs)
@@ -749,10 +750,10 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
       in
         List.exists (fn s => s = typename) dpdncs
       end;
-    fun is_invdependent_typecos {sym as (Constant t), typargs, dicts, dom, range, annotation} =
+    fun is_invdependent_typecos {sym as (Constant t), typargs = _, dicts = _, dom, range = _, annotation = _} =
       let 
         fun dest_itype (ITyVar vn) = vn
-          | dest_itype (v `%% vns) = v   
+          | dest_itype (v `%% _ (*vns*)) = v   
         val dttypcon = (fn (Code_Thingol.Datatypecons x) => x) (Code_Symbol.Graph.get_node program sym)
         val dom_typs = dom
           |> map dest_itype
