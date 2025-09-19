@@ -295,7 +295,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             str " { "]
           ),          
           str "}"          
-          (* Pretty.block (commas_append [str "xxx", str "yyy"]) *)
         )
         (commas_append (map print_co cos))
       end;
@@ -307,6 +306,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             fun to_tuple l prt = if (length l >= 2) then Pretty.block ([str "(", prt, str ")"]) else prt;
             fun print_eqn ((ts, t), (some_thm, _)) =
               let
+                val _ = tracing ("print_def EQN of TS =" ^ 
+                  wrap_list (map print_debug_info_iterm ts) ^ " T=" ^
+                  print_debug_info_iterm t)
                 val vars = reserved
                   |> intro_base_names_for (is_none o const_syntax)
                       deresolve (t :: ts)
@@ -332,21 +334,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       @@ print_term is_pseudo_fun some_thm vars NOBR t
                     )
                   end
-              | print_eqns _ (eqs as ((eq as (([_], _), _)) :: eqs')) =
-                  let
-                    (* fun temp_valname n x vns = "x" ^ toString 
-                    val temps =  *)
-                  in
-                    Pretty.block (
-                      str "="
-                      :: Pretty.brk 1
-                      :: str "function"
-                      :: Pretty.brk 1
-                      :: print_eqn eq
-                      :: maps (append [Pretty.fbrk, str "|", Pretty.brk 1]
-                            o single o print_eqn) eqs'
-                    )
-                  end
               | print_eqns _ (eqs as eq :: eqs') =
                   let
                     val vars = reserved
@@ -354,21 +341,28 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                            deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
                   in
-                    Pretty.block_enclose (
+                    Pretty.block_enclose(
                       Pretty.block (
-                        Pretty.breaks dummy_parms @ 
-                        [Pretty.brk 1,
-                        str "=",
-                        Pretty.brk 1,
-                        str "match",
-                        Pretty.brk 1,
-                        to_tuple dummy_parms ((Pretty.block o commas) dummy_parms),
-                        Pretty.brk 1,
-                        str "{"]
+                        (str "="
+                        :: Pretty.brk 1
+                        :: str "| "
+                        :: Pretty.commas dummy_parms)
+                        @ [str " | {"]
                       ),
                       str "}"
+                    )
+                    ( [Pretty.block_enclose (
+                        Pretty.block (
+                          [str "match",
+                          Pretty.brk 1,
+                          to_tuple dummy_parms ((Pretty.block o commas) dummy_parms),
+                          Pretty.brk 1,
+                          str "{"]
+                        ),
+                        str "}"
                       )
-                      (commas_append (map print_eqn eqs))
+                      (commas_append (map print_eqn eqs))]
+                    )
                   end;
             val prolog = if needs_typ then
               concat [str definer, (str o deresolve_const) const, str ":", print_typ NOBR ty]
