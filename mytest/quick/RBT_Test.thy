@@ -1,7 +1,7 @@
 theory RBT_Test imports
  "HOL-Data_Structures.RBT_Set"
   (*"Go.Go_Setup"*)
-  "Rust.Rust_Setup"
+  "Rust.Rust_Setup" "Rust.OML_Setup"
 begin
 
 
@@ -18,9 +18,17 @@ fun delete_list :: "'a::linorder list \<Rightarrow> 'a rbt \<Rightarrow> 'a rbt"
 fun trees_equal :: "'a::equal rbt \<Rightarrow> 'a rbt \<Rightarrow> bool" where
   "trees_equal a b = (a = b)"
 
+export_code delete_list tree_from_list join invc trees_equal t1 in StdML
+  module_name RbtTest
+
+export_code delete_list tree_from_list join invc trees_equal t1 in OML
+  module_name RbtTest
+
 export_code delete_list tree_from_list join invc trees_equal t1 in Rust
   module_name RbtTest
 
+export_code delete_list tree_from_list join invc trees_equal t1 in SML
+  module_name RbtTest
 
 (*export_code delete_list tree_from_list join invc trees_equal t1 checking Rust*)
 

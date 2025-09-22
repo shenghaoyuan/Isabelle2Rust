@@ -2,6 +2,7 @@ session Rust = Main +
   options [timeout = 600]
   theories
     Rust_Setup
+    OML_Setup
 
 session Go_Test_Quick_Local in "test/quick" = Rust +
   description "Quick test session with BigInts and RBTs"
@@ -12,6 +13,7 @@ session Go_Test_Quick_Local in "test/quick" = Rust +
     RBT_Test
   export_files
     "*:**.rs"
+    "*:**.ML"
     "*:**.ocaml"
 
 session Rust_Test_Quick in "mytest/quick" = Rust +
@@ -23,6 +25,7 @@ session Rust_Test_Quick in "mytest/quick" = Rust +
     RBT_Test
   export_files
     "*:**.rs"
+    "*:**.ML"
     "*:**.ocaml"
 
 session Max_Test in "maxTest" = Rust +
@@ -32,6 +35,7 @@ session Max_Test in "maxTest" = Rust +
     max
   export_files
     "*:**.rs"
+    "*:**.ML"
     "*:**.ocaml"
 
 session Get_Test in "getTest" = Rust +
@@ -41,6 +45,7 @@ session Get_Test in "getTest" = Rust +
     get
   export_files
     "*:**.rs"
+    "*:**.ML"
     "*:**.ocaml"
 
 session Generic_Test in "genericTest" = Rust +
@@ -50,4 +55,5 @@ session Generic_Test in "genericTest" = Rust +
     generic
   export_files
     "*:**.rs"
+    "*:**.ML"
     "*:**.ocaml"

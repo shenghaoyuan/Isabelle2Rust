@@ -1,30 +1,30 @@
 (*  Title:      Tools/Code/code_ml.ML
     Author:     Florian Haftmann, TU Muenchen
 
-Serializer for SML and Caml.
+Serializer for SML and OCaml.
 *)
 
-signature CODE_RUST =
+signature CODE_ML =
 sig
-  val target: string
+  val target_SML: string
+  val target_OCaml: string
 end;
 
-structure Code_ML : CODE_RUST =
+structure Code_ML : CODE_ML =
 struct
 
-open Basic_Code_Symbol;     
+open Basic_Code_Symbol;
 open Basic_Code_Thingol;
-open Code_Printer;      
+open Code_Printer;
 
-infixr 5 @@;         
+infixr 5 @@;
 infixr 5 @|;
 
 
 (** generic **)
 
-val target = "Rust";
-
-(** print debug info **)
+val target_SML = "StdML";
+val target_OCaml = "OML";
 
 fun wrap_args sl = "(" ^ String.concatWith ", " sl ^ ")"
 fun wrap_list sl = "[" ^ String.concatWith ", " sl ^ "]"
@@ -108,14 +108,6 @@ fun print_debug_info_node ((sym, stmt), syms) =
   wrap_struct [ "key: "^print_debug_info_sym sym, "stmt: "^print_debug_info_thingol_stmt stmt,
    "children: "^wrap_list (map print_debug_info_sym syms)]
 
-fun commas_append prts = 
-  let 
-    fun combine (x1::x2::x3::l) = Pretty.block [x1, x2, x3] :: combine l   
-      | combine [x] = [x]
-  in
-    combine (Pretty.commas prts)
-  end
-
 datatype ml_binding =
     ML_Function of string * (typscheme * ((iterm list * iterm) * (thm option * bool)) list)
   | ML_Instance of (string * class) * { class: class, tyco: string, vs: (vname * sort) list,
@@ -138,52 +130,359 @@ fun tuplify _ _ [] = NONE
   | tuplify print fxy [x] = SOME (print fxy x)
   | tuplify print _ xs = SOME (enum "," "(" ")" (map (print NOBR) xs));
 
-(** Caml serializer **)
 
-val print_rust_string =
-  let
-    (*fun unicode i = "\\u" ^ align_right "0" 4 (Int.fmt StringCvt.HEX i)*)
-    fun unicode i = "\\u{" ^ Int.toString i ^ "}"
-    fun char "\"" = "\\\""
-      | char "\\" = "\\\\"
-      | char c =
-         let val i = ord c
-         in if i < 32 orelse i > 126
-          then unicode i
-          else if i >= 128
-          then error "non-ASCII byte in Rust string literal"
-          else c
-        end;
-  in quote o translate_string char end;
+(** SML serializer **)
 
-fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
-  is_inf_typeco _ (*is_invdependent_typecos*) =
+fun print_sml_char c =
+  if c = "\\"
+  then "\\092" (*produce strings suitable for both SML as well as Isabelle/ML*)
+  else if Symbol.is_ascii c
+  then ML_Syntax.print_symbol_char c
+  else error "non-ASCII byte in SML string literal";
+
+val print_sml_string = quote o translate_string print_sml_char;
+
+fun print_sml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
   let
-    val _ = tracing "print_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
-    fun box s = "Box<"^s^">"
-    fun deref s = "*"^s val _ = deref
-    fun print_tyco_expr_gen is_head (sym, tys) = 
+    fun print_tyco_expr (sym, []) = (str o deresolve) sym
+      | print_tyco_expr (sym, [ty]) =
+          concat [print_typ BR ty, (str o deresolve) sym]
+      | print_tyco_expr (sym, tys) =
+          concat [enum "," "(" ")" (map (print_typ BR) tys), (str o deresolve) sym]
+    and print_typ fxy (tyco `%% tys) = (case tyco_syntax tyco
+         of NONE => print_tyco_expr (Type_Constructor tyco, tys)
+          | SOME (_, print) => print print_typ fxy tys)
+      | print_typ fxy (ITyVar v) = str ("'" ^ v);
+    fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
+    fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
+      (map_filter (fn (v, sort) =>
+        (print_product (fn class => print_dicttyp (class, ITyVar v)) sort)) vs @| p);
+    fun print_typscheme (vs, ty) = print_typscheme_prefix (vs, print_typ NOBR ty);
+    fun print_dicttypscheme (vs, class_ty) = print_typscheme_prefix (vs, print_dicttyp class_ty);
+    fun print_classrels fxy [] ps = brackify fxy ps
+      | print_classrels fxy [classrel] ps = brackify fxy [(str o deresolve_classrel) classrel, brackify BR ps]
+      | print_classrels fxy classrels ps =
+          brackify fxy [enum " o" "(" ")" (map (str o deresolve_classrel) classrels), brackify BR ps]
+    fun print_dict is_pseudo_fun fxy (Dict (classrels, x)) =
+      print_classrels fxy classrels (print_plain_dict is_pseudo_fun fxy x)
+    and print_plain_dict is_pseudo_fun fxy (Dict_Const (inst, dss)) =
+          ((str o deresolve_inst) inst ::
+            (if is_pseudo_fun (Class_Instance inst) then [str "()"]
+            else map_filter (print_dicts is_pseudo_fun BR o snd) dss))
+      | print_plain_dict is_pseudo_fun fxy (Dict_Var { var, index, length, ... }) =
+          [str (if length = 1 then Name.enforce_case true var ^ "_"
+            else Name.enforce_case true var ^ string_of_int (index + 1) ^ "_")]
+    and print_dicts is_pseudo_fun = tuplify (print_dict is_pseudo_fun);
+    val print_dict_args = map_filter (fn (v, sort) => print_dicts (K false) BR
+      (map_index (fn (i, _) => Dict ([],
+         Dict_Var { var = v, index = i, length = length sort, class = nth sort i, unique = true })) sort));
+    fun print_term is_pseudo_fun some_thm vars fxy (IConst const) =
+          print_app is_pseudo_fun some_thm vars fxy (const, [])
+      | print_term is_pseudo_fun some_thm vars fxy (IVar NONE) =
+          str "_"
+      | print_term is_pseudo_fun some_thm vars fxy (IVar (SOME v)) =
+          str (lookup_var vars v)
+      | print_term is_pseudo_fun some_thm vars fxy (t as t1 `$ t2) =
+          (case Code_Thingol.unfold_const_app t
+           of SOME app => print_app is_pseudo_fun some_thm vars fxy app
+            | NONE => brackify fxy [print_term is_pseudo_fun some_thm vars NOBR t1,
+                print_term is_pseudo_fun some_thm vars BR t2])
+      | print_term is_pseudo_fun some_thm vars fxy (t as _ `|=> _) =
+          let
+            val (binds, t') = Code_Thingol.unfold_pat_abs t;
+            fun print_abs (pat, ty) =
+              print_bind is_pseudo_fun some_thm NOBR pat
+              #>> (fn p => concat [str "fn", p, str "=>"]);
+            val (ps, vars') = fold_map print_abs binds vars;
+          in brackets (ps @ [print_term is_pseudo_fun some_thm vars' NOBR t']) end
+      | print_term is_pseudo_fun some_thm vars fxy (ICase case_expr) =
+          (case Code_Thingol.unfold_const_app (#primitive case_expr)
+           of SOME (app as ({ sym = Constant const, ... }, _)) =>
+                if is_none (const_syntax const)
+                then print_case is_pseudo_fun some_thm vars fxy case_expr
+                else print_app is_pseudo_fun some_thm vars fxy app
+            | NONE => print_case is_pseudo_fun some_thm vars fxy case_expr)
+    and print_app_expr is_pseudo_fun some_thm vars (app as ({ sym, dicts, dom, ... }, ts)) =
+      if is_constr sym then
+        let val wanted = length dom in
+          if wanted < 2 orelse length ts = wanted
+          then (str o deresolve) sym
+            :: the_list (tuplify (print_term is_pseudo_fun some_thm vars) BR ts)
+          else [print_term is_pseudo_fun some_thm vars BR (Code_Thingol.saturated_application wanted app)]
+        end
+      else if is_pseudo_fun sym
+        then (str o deresolve) sym @@ str "()"
+      else (str o deresolve) sym :: map_filter (print_dicts is_pseudo_fun BR) dicts
+        @ map (print_term is_pseudo_fun some_thm vars BR) ts
+    and print_app is_pseudo_fun some_thm vars = gen_print_app (print_app_expr is_pseudo_fun)
+      (print_term is_pseudo_fun) const_syntax some_thm vars
+    and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
+    and print_case is_pseudo_fun some_thm vars fxy { clauses = [], ... } =
+          (concat o map str) ["raise", "Fail", "\"empty case\""]
+      | print_case is_pseudo_fun some_thm vars fxy (case_expr as { clauses = [_], ... }) =
+          let
+            val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
+            fun print_match ((pat, _), t) vars =
+              vars
+              |> print_bind is_pseudo_fun some_thm NOBR pat
+              |>> (fn p => semicolon [str "val", p, str "=",
+                    print_term is_pseudo_fun some_thm vars NOBR t])
+            val (ps, vars') = fold_map print_match binds vars;
+          in
+            Pretty.chunks [
+              Pretty.block [str "let", Pretty.fbrk, Pretty.chunks ps],
+              Pretty.block [str "in", Pretty.fbrk, print_term is_pseudo_fun some_thm vars' NOBR body],
+              str "end"
+            ]
+          end
+      | print_case is_pseudo_fun some_thm vars fxy { term = t, typ = ty, clauses = clause :: clauses, ... } =
+          let
+            fun print_select delim (pat, body) =
+              let
+                val (p, vars') = print_bind is_pseudo_fun some_thm NOBR pat vars;
+              in
+                concat [str delim, p, str "=>", print_term is_pseudo_fun some_thm vars' NOBR body]
+              end;
+          in
+            brackets (
+              str "case"
+              :: print_term is_pseudo_fun some_thm vars NOBR t
+              :: print_select "of" clause
+              :: map (print_select "|") clauses
+            )
+          end;
+    fun print_val_decl print_typscheme (sym, typscheme) = concat
+      [str "val", str (deresolve sym), str ":", print_typscheme typscheme];
+    fun print_datatype_decl definer (tyco, (vs, cos)) =
       let
-        val isinf = is_inf_typeco (sym, tys)
-        val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
-          else deresolve sym
+        fun print_co ((co, _), []) = str (deresolve_const co)
+          | print_co ((co, _), tys) = concat [str (deresolve_const co), str "of",
+              enum " *" "" "" (map (print_typ (INFX (2, X))) tys)];
       in
-        case tys  
-       of [] => str tyconame
-        | [ty] =>
-          concat [print_typ_gen is_head BR ty, str tyconame]
-        | tys =>
-          concat [enum "," "(" ")" (map (print_typ_gen is_head BR) tys), str tyconame]
-      end
-    and print_typ_gen is_head fxy (tyco `%% tys) = (case tyco_syntax tyco
-         of NONE => print_tyco_expr_gen is_head (Type_Constructor tyco, tys)
-          | SOME (_, print) => print (print_typ_gen is_head) fxy tys)
-      | print_typ_gen _ (*is_head*) _ (*fxy*) (ITyVar v) = str ("'" ^ v);
-    fun print_tyco_expr (sym, tys) = print_tyco_expr_gen true (sym, tys);
-    fun print_typ fxy ty = print_typ_gen true fxy ty;
+        concat (
+          str definer
+          :: print_tyco_expr (Type_Constructor tyco, map ITyVar vs)
+          :: str "="
+          :: separate (str "|") (map print_co cos)
+        )
+      end;
+    fun print_def is_pseudo_fun needs_typ definer
+          (ML_Function (const, (vs_ty as (vs, ty), eq :: eqs))) =
+          let
+            fun print_eqn definer ((ts, t), (some_thm, _)) =
+              let
+                val vars = reserved
+                  |> intro_base_names_for (is_none o const_syntax)
+                       deresolve (t :: ts)
+                  |> intro_vars (build (fold Code_Thingol.add_varnames ts));
+                val prolog = if needs_typ then
+                  concat [str definer, (str o deresolve_const) const, str ":", print_typ NOBR ty]
+                    else (concat o map str) [definer, deresolve_const const];
+              in
+                concat (
+                  prolog
+                  :: (if is_pseudo_fun (Constant const) then [str "()"]
+                      else print_dict_args vs
+                        @ map (print_term is_pseudo_fun some_thm vars BR) ts)
+                  @ str "="
+                  @@ print_term is_pseudo_fun some_thm vars NOBR t
+                )
+              end
+            val shift = if null eqs then I else
+              map (Pretty.block o single o Pretty.block o single);
+          in pair
+            (print_val_decl print_typscheme (Constant const, vs_ty))
+            ((Pretty.block o Pretty.fbreaks o shift) (
+              print_eqn definer eq
+              :: map (print_eqn "|") eqs
+            ))
+          end
+      | print_def is_pseudo_fun _ definer
+          (ML_Instance (inst as (tyco, class), { vs, superinsts, inst_params, ... })) =
+          let
+            fun print_super_instance (super_class, x) =
+              concat [
+                (str o Long_Name.base_name o deresolve_classrel) (class, super_class),
+                str "=",
+                print_dict is_pseudo_fun NOBR (Dict ([], Dict_Const ((tyco, super_class), x)))
+              ];
+            fun print_classparam_instance ((classparam, (const, _)), (thm, _)) =
+              concat [
+                (str o Long_Name.base_name o deresolve_const) classparam,
+                str "=",
+                print_app (K false) (SOME thm) reserved NOBR (const, [])
+              ];
+          in pair
+            (print_val_decl print_dicttypscheme
+              (Class_Instance inst, (vs, (class, tyco `%% map (ITyVar o fst) vs))))
+            (concat (
+              str definer
+              :: (str o deresolve_inst) inst
+              :: (if is_pseudo_fun (Class_Instance inst) then [str "()"]
+                  else print_dict_args vs)
+              @ str "="
+              :: enum "," "{" "}"
+                (map print_super_instance superinsts
+                  @ map print_classparam_instance inst_params)
+              :: str ":"
+              @@ print_dicttyp (class, tyco `%% map (ITyVar o fst) vs)
+            ))
+          end;
+    fun print_stmt _ (ML_Exc (const, (vs_ty, n))) = pair
+          [print_val_decl print_typscheme (Constant const, vs_ty)]
+          ((semicolon o map str) (
+            (if n = 0 then "val" else "fun")
+            :: deresolve_const const
+            :: replicate n "_"
+            @ "="
+            :: "raise"
+            :: "Fail"
+            @@ print_sml_string const
+          ))
+      | print_stmt _ (ML_Val binding) =
+          let
+            val (sig_p, p) = print_def (K false) true "val" binding
+          in pair
+            [sig_p]
+            (semicolon [p])
+          end
+      | print_stmt _ (ML_Funs ((export, binding) :: exports_bindings, pseudo_funs)) =
+          let
+            val print_def' = print_def (member (op =) pseudo_funs) false;
+            fun print_pseudo_fun sym = concat [
+                str "val",
+                (str o deresolve) sym,
+                str "=",
+                (str o deresolve) sym,
+                str "();"
+              ];
+            val (sig_ps, (ps, p)) = (apsnd split_last o split_list)
+              (print_def' "fun" binding :: map (print_def' "and" o snd) exports_bindings);
+            val pseudo_ps = map print_pseudo_fun pseudo_funs;
+          in pair
+            (map_filter (fn (export, p) => if Code_Namespace.not_private export then SOME p else NONE)
+              ((export :: map fst exports_bindings) ~~ sig_ps))
+            (Pretty.chunks (ps @ semicolon [p] :: pseudo_ps))
+          end
+     | print_stmt _ (ML_Datas [(tyco, (vs, []))]) =
+          let
+            val ty_p = print_tyco_expr (Type_Constructor tyco, map ITyVar vs);
+          in
+            pair
+            [concat [str "type", ty_p]]
+            (semicolon [str "datatype", ty_p, str "=", str "EMPTY__"])
+          end
+     | print_stmt export (ML_Datas (data :: datas)) = 
+          let
+            val decl_ps = print_datatype_decl "datatype" data
+              :: map (print_datatype_decl "and") datas;
+            val (ps, p) = split_last decl_ps;
+          in pair
+            (if Code_Namespace.is_public export
+              then decl_ps
+              else map (fn (tyco, (vs, _)) =>
+                concat [str "type", print_tyco_expr (Type_Constructor tyco, map ITyVar vs)])
+                (data :: datas))
+            (Pretty.chunks (ps @| semicolon [p]))
+          end
+     | print_stmt export (ML_Class (class, (v, (classrels, classparams)))) =
+          let
+            fun print_field s p = concat [str s, str ":", p];
+            fun print_proj s p = semicolon
+              (map str ["val", s, "=", "#" ^ s, ":"] @| p);
+            fun print_super_class_decl (classrel as (_, super_class)) =
+              print_val_decl print_dicttypscheme
+                (Class_Relation classrel, ([(v, [class])], (super_class, ITyVar v)));
+            fun print_super_class_field (classrel as (_, super_class)) =
+              print_field (deresolve_classrel classrel) (print_dicttyp (super_class, ITyVar v));
+            fun print_super_class_proj (classrel as (_, super_class)) =
+              print_proj (deresolve_classrel classrel)
+                (print_dicttypscheme ([(v, [class])], (super_class, ITyVar v)));
+            fun print_classparam_decl (classparam, ty) =
+              print_val_decl print_typscheme
+                (Constant classparam, ([(v, [class])], ty));
+            fun print_classparam_field (classparam, ty) =
+              print_field (deresolve_const classparam) (print_typ NOBR ty);
+            fun print_classparam_proj (classparam, ty) =
+              print_proj (deresolve_const classparam)
+                (print_typscheme ([(v, [class])], ty));
+          in pair
+            (concat [str "type", print_dicttyp (class, ITyVar v)]
+              :: (if Code_Namespace.is_public export
+                 then map print_super_class_decl classrels
+                   @ map print_classparam_decl classparams
+                 else []))
+            (Pretty.chunks (
+              concat [
+                str "type",
+                print_dicttyp (class, ITyVar v),
+                str "=",
+                enum "," "{" "};" (
+                  map print_super_class_field classrels
+                  @ map print_classparam_field classparams
+                )
+              ]
+              :: map print_super_class_proj classrels
+              @ map print_classparam_proj classparams
+            ))
+          end;
+  in print_stmt end;
+
+fun print_sml_module name decls body =
+  Pretty.chunks2 (
+    Pretty.chunks [
+      str ("structure " ^ name ^ " : sig"),
+      (indent 2 o Pretty.chunks) decls,
+      str "end = struct"
+    ]
+    :: body
+    @| str ("end; (*struct " ^ name ^ "*)")
+  );
+
+val literals_sml = Literals {
+  literal_string = print_sml_string,
+  literal_numeral = fn k => "(" ^ string_of_int k ^ " : IntInf.int)",
+  literal_list = enum "," "[" "]",
+  infix_cons = (7, "::")
+};
+
+
+(** OCaml serializer **)
+
+val print_ocaml_string =
+  let
+    fun chr i =
+      let
+        val xs = string_of_int i;
+        val ys = replicate_string (3 - length (raw_explode xs)) "0";
+      in "\\" ^ ys ^ xs end;
+    fun char c =
+      let
+        val i = ord c;
+        val s =
+          if i >= 128 then error "non-ASCII byte in OCaml string literal"
+          else if i < 32 orelse i = 34 orelse i = 39 orelse i = 92 orelse i > 126
+          then chr i else c
+      in s end;
+  in quote o translate_string char end;
+
+fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
+  let
+    val deresolve_const = deresolve o Constant;
+    val deresolve_classrel = deresolve o Class_Relation;
+    val deresolve_inst = deresolve o Class_Instance;
+    fun print_tyco_expr (sym, []) = (str o deresolve) sym
+      | print_tyco_expr (sym, [ty]) =
+          concat [print_typ BR ty, (str o deresolve) sym]
+      | print_tyco_expr (sym, tys) =
+          concat [enum "," "(" ")" (map (print_typ BR) tys), (str o deresolve) sym]
+    and print_typ fxy (tyco `%% tys) = (case tyco_syntax tyco
+         of NONE => print_tyco_expr (Type_Constructor tyco, tys)
+          | SOME (_, print) => print print_typ fxy tys)
+      | print_typ fxy (ITyVar v) = str ("'" ^ v);
     fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
     fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
       (map_filter (fn (v, sort) =>
@@ -195,11 +494,11 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun print_dict is_pseudo_fun fxy (Dict (classrels, x)) =
       print_plain_dict is_pseudo_fun fxy x
       |> print_classrels classrels
-    and print_plain_dict is_pseudo_fun _ (Dict_Const (inst, dss)) =
+    and print_plain_dict is_pseudo_fun fxy (Dict_Const (inst, dss)) =
           brackify BR ((str o deresolve_inst) inst ::
             (if is_pseudo_fun (Class_Instance inst) then [str "()"]
             else map_filter (print_dicts is_pseudo_fun BR o snd) dss))
-      | print_plain_dict _ _ (Dict_Var { var, index, length, ... }) =
+      | print_plain_dict is_pseudo_fun fxy (Dict_Var { var, index, length, ... }) =
           str (if length = 1 then "_" ^ Name.enforce_case true var
             else "_" ^ Name.enforce_case true var ^ string_of_int (index + 1))
     and print_dicts is_pseudo_fun = tuplify (print_dict is_pseudo_fun);
@@ -208,16 +507,16 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
          Dict_Var { var = v, index = i, length = length sort, class = nth sort i, unique = true })) sort));
     fun print_term is_pseudo_fun some_thm vars fxy (IConst const) =
           print_app is_pseudo_fun some_thm vars fxy (const, [])
-      | print_term _ _ _ _ (IVar NONE) =
+      | print_term is_pseudo_fun some_thm vars fxy (IVar NONE) =
           str "_"
-      | print_term _ _ vars _ (IVar (SOME v)) =
+      | print_term is_pseudo_fun some_thm vars fxy (IVar (SOME v)) =
           str (lookup_var vars v)
       | print_term is_pseudo_fun some_thm vars fxy (t as t1 `$ t2) =
           (case Code_Thingol.unfold_const_app t
            of SOME app => print_app is_pseudo_fun some_thm vars fxy app
             | NONE => brackify fxy [print_term is_pseudo_fun some_thm vars NOBR t1,
                 print_term is_pseudo_fun some_thm vars BR t2])
-      | print_term is_pseudo_fun some_thm vars _ (t as _ `|=> _) =
+      | print_term is_pseudo_fun some_thm vars fxy (t as _ `|=> _) =
           let
             val (binds, t') = Code_Thingol.unfold_pat_abs t;
             val (ps, vars') = fold_map (print_bind is_pseudo_fun some_thm BR o fst) binds vars;
@@ -244,9 +543,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     and print_app is_pseudo_fun some_thm vars = gen_print_app (print_app_expr is_pseudo_fun)
       (print_term is_pseudo_fun) const_syntax some_thm vars
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
-    and print_case _ _ _ _ { clauses = [], ... } =
-          (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
-      | print_case is_pseudo_fun some_thm vars _ (case_expr as { clauses = [_], ... }) =
+    and print_case is_pseudo_fun some_thm vars fxy { clauses = [], ... } =
+          (concat o map str) ["failwith", "\"empty case\""]
+      | print_case is_pseudo_fun some_thm vars fxy (case_expr as { clauses = [_], ... }) =
           let
             val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
             fun print_let ((pat, _), t) vars =
@@ -258,12 +557,12 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in
             brackets [Pretty.chunks ps, print_term is_pseudo_fun some_thm vars' NOBR body]
           end
-      | print_case is_pseudo_fun some_thm vars _ { term = t, typ = _, clauses = clause :: clauses, ... } =
+      | print_case is_pseudo_fun some_thm vars fxy { term = t, typ = ty, clauses = clause :: clauses, ... } =
           let
             fun print_select delim (pat, body) =
               let
                 val (p, vars') = print_bind is_pseudo_fun some_thm NOBR pat vars;
-              in concat [str delim, p, str "=>", print_term is_pseudo_fun some_thm vars' NOBR body] end;
+              in concat [str delim, p, str "->", print_term is_pseudo_fun some_thm vars' NOBR body] end;
           in
             brackets (
               str "match"
@@ -276,49 +575,30 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       [str "val", str (deresolve sym), str ":", print_typscheme typscheme];
     fun print_datatype_decl definer (tyco, (vs, cos)) =
       let
-        fun print_debug_info_co ((co, vs), tys) = wrap_args[wrap_args [co, wrap_list(vs)], wrap_list (map print_debug_info_itype tys)]
-        val _ = tracing ("print_datatype_decl TYCO=" ^ tyco ^ "\nVS=" ^ wrap_list vs ^ "\nCOS=" ^ wrap_list (map print_debug_info_co cos))
         fun print_co ((co, _), []) = str (deresolve_const co)
-          | print_co ((co, _), tys) = 
-            concat [
-              str (deresolve_const co), 
-              Pretty.block([
-                str "(",
-                enum " *" "" "" (map (print_typ_gen false (INFX (2, X))) tys), 
-                str")"])
-              ];
+          | print_co ((co, _), tys) = concat [str (deresolve_const co), str "of",
+              enum " *" "" "" (map (print_typ (INFX (2, X))) tys)];
       in
-        Pretty.block_enclose (
-          Pretty.block (
-            [str definer,
-            Pretty.brk 1,
-            print_tyco_expr (Type_Constructor tyco, map ITyVar vs),
-            str " { "]
-          ),          
-          str "}"          
+        concat (
+          str definer
+          :: print_tyco_expr (Type_Constructor tyco, map ITyVar vs)
+          :: str "="
+          :: separate (str "|") (map print_co cos)
         )
-        (commas_append (map print_co cos))
       end;
     fun print_def is_pseudo_fun needs_typ definer
           (ML_Function (const, (vs_ty as (vs, ty), eqs))) =
           let
-            val _ = tracing ("print_def FUN of " ^const^ " = "^
-              print_debug_info_thingol_stmt (Code_Thingol.Fun ((vs_ty,eqs),NONE)))
-            fun to_tuple l prt = if (length l >= 2) then Pretty.block ([str "(", prt, str ")"]) else prt;
             fun print_eqn ((ts, t), (some_thm, _)) =
               let
-                val _ = tracing ("print_def EQN of TS =" ^ 
-                  wrap_list (map print_debug_info_iterm ts) ^ " T=" ^
-                  print_debug_info_iterm t)
                 val vars = reserved
                   |> intro_base_names_for (is_none o const_syntax)
                       deresolve (t :: ts)
                   |> intro_vars (build (fold Code_Thingol.add_varnames ts));
               in concat [
-                to_tuple ts (
-                    (Pretty.block o commas)
-                      (map (print_term is_pseudo_fun some_thm vars NOBR) ts)),
-                str "=>",
+                (Pretty.block o commas)
+                  (map (print_term is_pseudo_fun some_thm vars NOBR) ts),
+                str "->",
                 print_term is_pseudo_fun some_thm vars NOBR t
               ] end;
             fun print_eqns is_pseudo [((ts, t), (some_thm, _))] =
@@ -335,6 +615,16 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       @@ print_term is_pseudo_fun some_thm vars NOBR t
                     )
                   end
+              | print_eqns _ ((eq as (([_], _), _)) :: eqs) =
+                  Pretty.block (
+                    str "="
+                    :: Pretty.brk 1
+                    :: str "function"
+                    :: Pretty.brk 1
+                    :: print_eqn eq
+                    :: maps (append [Pretty.fbrk, str "|", Pretty.brk 1]
+                          o single o print_eqn) eqs
+                  )
               | print_eqns _ (eqs as eq :: eqs') =
                   let
                     val vars = reserved
@@ -342,27 +632,20 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                            deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
                   in
-                    Pretty.block_enclose(
-                      Pretty.block (
-                        (str "="
-                        :: Pretty.brk 1
-                        :: str "| "
-                        :: Pretty.commas dummy_parms)
-                        @ [str " | {"]
-                      ),
-                      str "}"
-                    )
-                    ( [Pretty.block_enclose (
-                        Pretty.block (
-                          [str "match",
-                          Pretty.brk 1,
-                          to_tuple dummy_parms ((Pretty.block o commas) dummy_parms),
-                          Pretty.brk 1,
-                          str "{"]
-                        ),
-                        str "}"
-                      )
-                      (commas_append (map print_eqn eqs))]
+                    Pretty.block (
+                      Pretty.breaks dummy_parms
+                      @ Pretty.brk 1
+                      :: str "="
+                      :: Pretty.brk 1
+                      :: str "match"
+                      :: Pretty.brk 1
+                      :: (Pretty.block o commas) dummy_parms
+                      :: Pretty.brk 1
+                      :: str "with"
+                      :: Pretty.brk 1
+                      :: print_eqn eq
+                      :: maps (append [Pretty.fbrk, str "|", Pretty.brk 1]
+                           o single o print_eqn) eqs'
                     )
                   end;
             val prolog = if needs_typ then
@@ -408,24 +691,22 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               ]
             ))
           end;
-    (*fun print_stmt: Code_Namespace.export -> ml_stmt -> Pretty.T list * Pretty.T*)
      fun print_stmt _ (ML_Exc (const, (vs_ty, n))) = pair
           [print_val_decl print_typscheme (Constant const, vs_ty)]
-          (String.concat (
+          ((doublesemicolon o map str) (
             "let"
             :: deresolve_const const
             :: replicate n "_"
             @ "="
             :: "failwith"
-            @@ print_rust_string const
-          ) 
-          |> str)
+            @@ print_ocaml_string const
+          ))
       | print_stmt _ (ML_Val binding) =
           let
             val (sig_p, p) = print_def (K false) true "let" binding
           in pair
             [sig_p]
-            (p)
+            (doublesemicolon [p])
           end
       | print_stmt _ (ML_Funs ((export, binding) :: exports_bindings, pseudo_funs)) =
           let
@@ -443,7 +724,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in pair
             (map_filter (fn (export, p) => if Code_Namespace.not_private export then SOME p else NONE)
               ((export :: map fst exports_bindings) ~~ sig_ps))
-            (Pretty.chunks (ps @ p :: pseudo_ps))
+            (Pretty.chunks (ps @ doublesemicolon [p] :: pseudo_ps))
           end
      | print_stmt _ (ML_Datas [(tyco, (vs, []))]) =
           let
@@ -451,19 +732,20 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in
             pair
             [concat [str "type", ty_p]]
-            (concat [str "type", ty_p, str "=", str "EMPTY__"])
+            (doublesemicolon [str "type", ty_p, str "=", str "EMPTY__"])
           end
-     | print_stmt export (ML_Datas (datas)) = 
+     | print_stmt export (ML_Datas (data :: datas)) = 
           let
-            val decl_ps = map (print_datatype_decl "enum") datas;
+            val decl_ps = print_datatype_decl "type" data
+              :: map (print_datatype_decl "and") datas;
             val (ps, p) = split_last decl_ps;
           in pair
             (if Code_Namespace.is_public export
               then decl_ps
               else map (fn (tyco, (vs, _)) =>
                 concat [str "type", print_tyco_expr (Type_Constructor tyco, map ITyVar vs)])
-                (datas))
-            (Pretty.chunks (ps @| p))
+                (data :: datas))
+            (Pretty.chunks (ps @| doublesemicolon [p]))
           end
      | print_stmt export (ML_Class (class, (v, (classrels, classparams)))) =
           let
@@ -495,7 +777,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               then [type_decl_p] (*work around weakness in export calculation*)
               else [concat [str "type", print_dicttyp (class, ITyVar v)]])
             (Pretty.chunks (
-              type_decl_p
+              doublesemicolon [type_decl_p]
               :: map print_classparam_proj classparams
             ))
           end;
@@ -519,77 +801,33 @@ val literals_ocaml = let
       then "(Z.of_int " ^ string_of_int k ^ ")"
       else "(Z.of_string " ^ quote (string_of_int k) ^ ")"
 in Literals {
-  literal_string = print_rust_string,
+  literal_string = print_ocaml_string,
   literal_numeral = numeral_ocaml,
   literal_list = enum ";" "[" "]",
   infix_cons = (6, "::")
 } end;
 
-(** namify **)
 
-fun variant_snake_case s ctxt =
-  let
-    val cs = String.explode s;
-    fun to_snake_case cs =
-      let
-        fun is_upper c = Char.isUpper c;
-        fun is_lower c = Char.isLower c;
-        fun aux [] = []
-          | aux [c] = [Char.toLower c]
-          | aux (c1 :: c2 :: cs) =
-              if is_upper c1 andalso is_lower c2 then
-                #"_" :: Char.toLower c1 :: aux (c2 :: cs)
-              else if is_upper c1 andalso is_upper c2 then
-                Char.toLower c1 :: aux (c2 :: cs)
-              else
-                Char.toLower c1 :: aux (c2 :: cs)
-        fun auxx [] = []
-          | auxx [c] = [Char.toLower c]
-          | auxx (c :: cs) = Char.toLower c :: aux cs
-      in auxx cs end;
-    val s_snake = to_snake_case cs
-  in
-    ctxt |> Name.variant (String.implode s_snake)
-  end;
 
-fun variant_upper_camel_case s ctxt =
-  let
-    val cs = String.explode s;
-    fun to_upper_camel_case cs =
-      let
-        fun aux [] = []
-          | aux [c] = [c]
-          | aux (c1 :: c2 :: cs) =
-            if (c1 = #"_") then Char.toUpper c2 :: aux cs
-            else c1 :: aux (c2 :: cs)
-        fun auxx [] = []
-          | auxx [c] = [Char.toUpper c]
-          | auxx (c :: cs) = Char.toUpper c :: aux cs
-      in auxx cs end;
-    val s_camel = to_upper_camel_case cs
-  in
-    ctxt |> Name.variant (String.implode s_camel)
-  end;
-
-(** SML/Caml generic part **)
+(** SML/OCaml generic part **)
 
 fun ml_program_of_program ctxt module_name reserved identifiers =
   let
-    fun namify_const variant base (nsp_const, nsp_type) =
+    fun namify_const upper base (nsp_const, nsp_type) =
       let
-        val (base', nsp_const') = variant base nsp_const
+        val (base', nsp_const') = Name.variant (Name.enforce_case upper base) nsp_const
       in (base', (nsp_const', nsp_type)) end;
-    fun namify_type variant base (nsp_const, nsp_type) =
+    fun namify_type base (nsp_const, nsp_type) =
       let
-        val (base', nsp_type') = variant base nsp_type
+        val (base', nsp_type') = Name.variant (Name.enforce_case false base) nsp_type
       in (base', (nsp_const, nsp_type')) end;
-    fun namify_stmt (Code_Thingol.Fun _) = namify_const variant_snake_case
-      | namify_stmt (Code_Thingol.Datatype _) = namify_type variant_upper_camel_case
-      | namify_stmt (Code_Thingol.Datatypecons _) = namify_const variant_upper_camel_case
-      | namify_stmt (Code_Thingol.Class _) = namify_type variant_upper_camel_case
-      | namify_stmt (Code_Thingol.Classrel _) = namify_const variant_upper_camel_case
-      | namify_stmt (Code_Thingol.Classparam _) = namify_const variant_upper_camel_case
-      | namify_stmt (Code_Thingol.Classinst _) = namify_const variant_upper_camel_case;
+    fun namify_stmt (Code_Thingol.Fun _) = namify_const false
+      | namify_stmt (Code_Thingol.Datatype _) = namify_type
+      | namify_stmt (Code_Thingol.Datatypecons _) = namify_const true
+      | namify_stmt (Code_Thingol.Class _) = namify_type
+      | namify_stmt (Code_Thingol.Classrel _) = namify_const false
+      | namify_stmt (Code_Thingol.Classparam _) = namify_const false
+      | namify_stmt (Code_Thingol.Classinst _) = namify_const false;
     fun ml_binding_of_stmt (sym as Constant const, (export, Code_Thingol.Fun ((tysm as (vs, ty), raw_eqs), _))) =
           let
             val eqs = filter (snd o snd) raw_eqs;
@@ -616,7 +854,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
           | _ => case some_value_sym
              of NONE => ML_Funs ([(export', binding)], [])
               | SOME (sym, true) => ML_Funs ([(export, binding)], [sym])
-              | SOME (_(*sym*), false) => ML_Val binding
+              | SOME (sym, false) => ML_Val binding
       in SOME (export, ml_stmt) end;
     fun modify_funs stmts = single (SOME
       (Code_Namespace.Opaque, ML_Funs (map_split ml_binding_of_stmt stmts |> (apsnd o map_filter o Option.map) fst)))
@@ -678,7 +916,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
 
 fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     { module_name, reserved_syms, identifiers, includes,
-      class_syntax = _, tyco_syntax, const_syntax } program exports =
+      class_syntax, tyco_syntax, const_syntax } program exports =
   let
     val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node (Code_Symbol.Graph.dest program))^"\n")
 
@@ -686,96 +924,11 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     val { deresolver, hierarchical_program = ml_program } =
       ml_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;
-    val _ = tracing "Build Program Accomplished"
-
-    (* global info look-up functions*)
-    (** look up stmt info through sym in 
-      program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
-    **)
-    fun lookup_dependent_types_h program sym dpdncs =
-      let 
-        fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
-            ([], L2) => L2
-          | (L1, []) => L1
-          | (x1::rest1, x2::rest2) =>
-              if leq(x1, x2) then x1 :: merge leq (rest1, L2)
-              else x2 :: merge leq (L1, rest2);
-        fun mergesort leq (lst : string list) =
-          if (length lst) <= 1 then
-            lst
-          else
-            let 
-              val m = (length lst) div 2
-              val (L1, L2) = (List.take(lst, m), List.drop(lst, m))
-            in
-              merge leq (mergesort leq L1, mergesort leq L2)
-            end;
-        fun dedup_sorted eq (lst : string list) = case lst of
-            [] => []
-          | [x] => [x]
-          | x1 :: x2 :: rest =>
-              if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
-              else x1 :: dedup_sorted eq (x2 :: rest);
-        fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
-        fun dest_itype (ITyVar vn) = [vn]
-          | dest_itype (v `%% vns) = v::(List.concat(map dest_itype vns))
-        fun dest_types (Code_Thingol.Datatype (_(*vns*), cos)) = 
-          cos  
-          |> map (fn ((_, _), ityps) => ityps)
-          |> List.concat
-          |> map dest_itype
-          |> List.concat
-          |> dedup
-        val drct_dpdncs = dest_types (Code_Symbol.Graph.get_node program sym)
-        val snd_dpdncs = drct_dpdncs@dpdncs 
-          |> map (fn t => (Type_Constructor t)) 
-          |> map (Code_Symbol.Graph.get_node program)
-          |> map dest_types
-          |> List.concat
-          |> (fn l => l@drct_dpdncs@dpdncs)
-          |> dedup
-      in
-        if (List.length dpdncs) = (List.length (snd_dpdncs))
-        then dpdncs
-        else lookup_dependent_types_h program sym snd_dpdncs
-      end;
-    fun lookup_dependent_types program sym = lookup_dependent_types_h program sym [];
-    fun is_inf_typeco (sym, tys) =
-      let
-        val dpdncs = lookup_dependent_types program sym
-        val typename = (fn (Type_Constructor x) => x
-          | _ => raise Fail "not a Type_construtor") sym
-        fun dest_itype (ITyVar vn) = vn
-          | dest_itype (v `%% _(*vns*)) = v 
-        val types = map dest_itype tys
-        val res = List.exists (fn s => s = typename) dpdncs
-        val _ = tracing ("is_inftype TYPECO="^(print_debug_info_sym sym)^" DEPENDCENIES="^ (wrap_list dpdncs)
-        ^"\nTYPES="^ (wrap_list types)^" RES="^Bool.toString res)
-      in
-        List.exists (fn s => s = typename) dpdncs
-      end;
-    fun is_invdependent_typecos {sym as (Constant t), typargs = _, dicts = _, dom, range = _, annotation = _} =
-      let 
-        fun dest_itype (ITyVar vn) = vn
-          | dest_itype (v `%% _ (*vns*)) = v   
-        val dttypcon = (fn (Code_Thingol.Datatypecons x) => x) (Code_Symbol.Graph.get_node program sym)
-        val dom_typs = dom
-          |> map dest_itype
-          |> map (fn x => Type_Constructor x)
-        val dom_dpdncs = map (lookup_dependent_types program) dom_typs
-        val _ = tracing ("is_invdependent_typecos TYPECO="^t^
-          "\nDOM="^(wrap_list (map dest_itype dom))^" DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs)))
-      in
-        map (List.exists (fn s => s = dttypcon)) dom_dpdncs
-    end;     
-
 
     (* print statements *)
-    fun print_stmt prefix_fragments (_, (export, stmt)) = (print_ml_stmt
+    fun print_stmt prefix_fragments (_, (export, stmt)) = print_ml_stmt
       tyco_syntax const_syntax (make_vars reserved_syms)
-      (Code_Thingol.is_constr program) (deresolver prefix_fragments)
-      is_inf_typeco is_invdependent_typecos)
-      export stmt
+      (Code_Thingol.is_constr program) (deresolver prefix_fragments) export stmt
       |> apfst (fn decl => if Code_Namespace.not_private export then SOME decl else NONE);
 
     (* print modules *)
@@ -794,8 +947,11 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     (Code_Target.Singleton (ml_extension, p), try (deresolver []))
   end;
 
+val serializer_sml : Code_Target.serializer =
+  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_sml_module print_sml_stmt "ML");
+
 val serializer_ocaml : Code_Target.serializer =
-  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_ocaml_module print_ocaml_stmt "rs");
+  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_ocaml_module print_ocaml_stmt "ocaml");
 
 
 (** Isar setup **)
@@ -809,28 +965,39 @@ fun fun_syntax print_typ fxy [ty1, ty2] =
 
 val _ = Theory.setup
   (Code_Target.add_language
-    (target, {serializer = serializer_ocaml, literals = literals_ocaml,
+    (target_SML, {serializer = serializer_sml, literals = literals_sml,
+      check = {env_var = "",
+        make_destination = fn p => p + Path.explode "ROOT.ML",
+        make_command = fn _ =>
+          "isabelle process -e 'datatype ref = datatype Unsynchronized.ref' -f 'ROOT.ML' -l Pure"},
+      evaluation_args = []})
+  #> Code_Target.add_language
+    (target_OCaml, {serializer = serializer_ocaml, literals = literals_ocaml,
       check = {env_var = "ISABELLE_OCAMLFIND",
         make_destination = fn p => p + Path.explode "ROOT.ml"
-          (*extension demanded by Caml compiler*),
+          (*extension demanded by OCaml compiler*),
         make_command = fn _ =>
           "\"$ISABELLE_OCAMLFIND\" ocamlopt -w -p-u -package zarith -linkpkg ROOT.ml </dev/null"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
-    [(target, SOME (2, fun_syntax))]))
-  #> fold (Code_Target.add_reserved target) [
-    "Self", "abstract", "alignof", "and", "any", "as", "assert", "become", 
-    "begin", "box", "break","case", "chan", "class", "const", "constraint", 
-    "continue", "crate", "default", "defer", "do", "done", "downto", 
-    "else", "end", "enum", "exception", "extern", "extern crate", "external", 
-    "fallthrough", "false", "final", "fn", "for", "fun", "func", "function", "functor", 
-    "go", "goto", "if", "if let", "impl", "import", "in", "include", "inherit", 
-    "initializer", "interface", "lazy", "let", "loop", "macro", "map", "match", "method", 
-    "mod", "module", "move", "mut", "mutable", "new", "object", "of", "offsetof", "open", 
-    "or", "override", "package", "priv", "private", "proc", "pub", "pure", "range", 
-    "rec", "ref", "return", "select", "self", "sig", "sizeof", "static", "struct", 
-    "super", "switch", "then", "to", "trait", "true", "try", "type", "typeof", "unsafe",
-    "unsized", "use", "val", "var", "virtual", "when", "where", "while", "with", "yield"]
-  #> fold (Code_Target.add_reserved target) ["failwith", (*"mod",*) "Z"]);
+    [(target_SML, SOME (2, fun_syntax)), (target_OCaml, SOME (2, fun_syntax))]))
+  #> fold (Code_Target.add_reserved target_SML) ML_Syntax.reserved_names
+  #> fold (Code_Target.add_reserved target_SML) [
+      "ref", (*rebinding is illegal*)
+      "o", (*dictionary projections use it already*)
+      "nil", (*predefined constructor*)
+      "Fail",
+      "div", "mod", (*standard infixes*)
+      "IntInf"]
+  #> fold (Code_Target.add_reserved target_OCaml) [
+      "and", "as", "assert", "begin", "class",
+      "constraint", "do", "done", "downto", "else", "end", "exception",
+      "external", "false", "for", "fun", "function", "functor", "if",
+      "in", "include", "inherit", "initializer", "lazy", "let", "match", "method",
+      "module", "mutable", "new", "object", "of", "open", "or", "private", "rec",
+      "sig", "struct", "then", "to", "true", "try", "type", "val",
+      "virtual", "when", "while", "with"
+    ]
+  #> fold (Code_Target.add_reserved target_OCaml) ["failwith", "mod", "Z"]);
 
 end; (*struct*)
