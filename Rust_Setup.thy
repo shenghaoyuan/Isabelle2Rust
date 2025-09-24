@@ -30,10 +30,10 @@ code_printing
 | constant implies \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else true)"
 | constant HOL.If \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else (_))"
 
-code_printing
+(*code_printing
   type_class equal \<rightharpoonup> (Rust) "(_ == _)"
-| constant HOL.equal \<rightharpoonup> (Haskell) infix 4 "=="
-| constant HOL.eq \<rightharpoonup> (Haskell) infix 4 "=="
+| constant HOL.equal \<rightharpoonup> (Rust) infix 4 "=="
+| constant HOL.eq \<rightharpoonup> (Rust) infix 4 "=="*)
 
 (*constant HOL.Not \<rightharpoonup> (Rust) "'! _"*)
 (*| constant HOL.implies \<rightharpoonup> (Rust) "!('!((_)) || (_))"*)

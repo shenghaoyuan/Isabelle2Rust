@@ -471,6 +471,7 @@ val print_ocaml_string =
 
 fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
   let
+    val _ = tracing "\nprint_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
@@ -575,6 +576,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
       [str "val", str (deresolve sym), str ":", print_typscheme typscheme];
     fun print_datatype_decl definer (tyco, (vs, cos)) =
       let
+        fun print_debug_info_co ((co, vs), tys) = wrap_args[wrap_args [co, wrap_list(vs)], wrap_list (map print_debug_info_itype tys)]
+        val _ = tracing ("print_datatype_decl TYCO=" ^ tyco ^ "\nVS=" ^ wrap_list vs ^ "\nCOS=" ^ wrap_list (map print_debug_info_co cos))
         fun print_co ((co, _), []) = str (deresolve_const co)
           | print_co ((co, _), tys) = concat [str (deresolve_const co), str "of",
               enum " *" "" "" (map (print_typ (INFX (2, X))) tys)];

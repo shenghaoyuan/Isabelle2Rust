@@ -159,7 +159,7 @@ val print_rust_string =
 fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
   is_inf_typeco _ (*is_invdependent_typecos*) =
   let
-    val _ = tracing "print_ocmal_stmt IN"
+    val _ = tracing "\nprint_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_classrel = deresolve o Class_Relation;
     val deresolve_inst = deresolve o Class_Instance;
@@ -167,6 +167,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun deref s = "*"^s val _ = deref
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let
+        val _ = tracing ("print_tyco_expr_gen SYM="^print_debug_info_sym sym)
         val isinf = is_inf_typeco (sym, tys)
         val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
           else deresolve sym
@@ -726,6 +727,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
           |> map dest_itype
           |> List.concat
           |> dedup
+          | dest_types x = raise Fail ("dest_types: "^ print_debug_info_thingol_stmt x)
         val drct_dpdncs = dest_types (Code_Symbol.Graph.get_node program sym)
         val snd_dpdncs = drct_dpdncs@dpdncs 
           |> map (fn t => (Type_Constructor t)) 
@@ -740,7 +742,8 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
         else lookup_dependent_types_h program sym snd_dpdncs
       end;
     fun lookup_dependent_types program sym = lookup_dependent_types_h program sym [];
-    fun is_inf_typeco (sym, tys) =
+    fun is_inf_typeco (sym as (Type_Class _), _) = false
+      | is_inf_typeco (sym, tys) =
       let
         val dpdncs = lookup_dependent_types program sym
         val typename = (fn (Type_Constructor x) => x

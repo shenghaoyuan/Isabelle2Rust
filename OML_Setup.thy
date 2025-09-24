@@ -30,9 +30,9 @@ code_printing
 | constant implies \<rightharpoonup> (OML) "!(if (_)/ then (_)/ else true)"
 | constant HOL.If \<rightharpoonup> (OML) "!(if (_)/ then (_)/ else (_))"
 
-code_printing
+(*code_printing
   type_class equal \<rightharpoonup> (OML) "(_ == _)"
-| constant HOL.equal \<rightharpoonup> (Haskell) infix 4 "=="
-| constant HOL.eq \<rightharpoonup> (Haskell) infix 4 "=="
+| constant HOL.equal \<rightharpoonup> (OML) infix 4 "=="
+| constant HOL.eq \<rightharpoonup> (OML) infix 4 "=="*)
 
 end
