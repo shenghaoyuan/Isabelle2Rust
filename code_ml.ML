@@ -1,13 +1,13 @@
 (*  Title:      Tools/Code/code_ml.ML
     Author:     Florian Haftmann, TU Muenchen
 
-Serializer for SML and OCaml.
+Serializer for SML and OML.
 *)
 
 signature CODE_ML =
 sig
   val target_SML: string
-  val target_OCaml: string
+  val target_OML: string
 end;
 
 structure Code_ML : CODE_ML =
@@ -24,7 +24,7 @@ infixr 5 @|;
 (** generic **)
 
 val target_SML = "StdML";
-val target_OCaml = "OML";
+val target_OML = "OML";
 
 fun wrap_args sl = "(" ^ String.concatWith ", " sl ^ ")"
 fun wrap_list sl = "[" ^ String.concatWith ", " sl ^ "]"
@@ -450,9 +450,9 @@ val literals_sml = Literals {
 };
 
 
-(** OCaml serializer **)
+(** OML serializer **)
 
-val print_ocaml_string =
+val print_OML_string =
   let
     fun chr i =
       let
@@ -463,13 +463,13 @@ val print_ocaml_string =
       let
         val i = ord c;
         val s =
-          if i >= 128 then error "non-ASCII byte in OCaml string literal"
+          if i >= 128 then error "non-ASCII byte in OML string literal"
           else if i < 32 orelse i = 34 orelse i = 39 orelse i = 92 orelse i > 126
           then chr i else c
       in s end;
   in quote o translate_string char end;
 
-fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
+fun print_OML_stmt tyco_syntax const_syntax reserved is_constr deresolve =
   let
     val _ = tracing "\nprint_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
@@ -702,7 +702,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
             :: replicate n "_"
             @ "="
             :: "failwith"
-            @@ print_ocaml_string const
+            @@ print_OML_string const
           ))
       | print_stmt _ (ML_Val binding) =
           let
@@ -786,7 +786,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve =
           end;
   in print_stmt end;
 
-fun print_ocaml_module name decls body =
+fun print_OML_module name decls body =
   Pretty.chunks2 (
     Pretty.chunks [
       str ("module " ^ name ^ " : sig"),
@@ -797,22 +797,22 @@ fun print_ocaml_module name decls body =
     @| str ("end;; (*struct " ^ name ^ "*)")
   );
 
-val literals_ocaml = let
-  fun numeral_ocaml k = if k < 0
-    then "(Z.neg " ^ numeral_ocaml (~ k) ^ ")"
+val literals_OML = let
+  fun numeral_OML k = if k < 0
+    then "(Z.neg " ^ numeral_OML (~ k) ^ ")"
     else if k <= 1073741823
       then "(Z.of_int " ^ string_of_int k ^ ")"
       else "(Z.of_string " ^ quote (string_of_int k) ^ ")"
 in Literals {
-  literal_string = print_ocaml_string,
-  literal_numeral = numeral_ocaml,
+  literal_string = print_OML_string,
+  literal_numeral = numeral_OML,
   literal_list = enum ";" "[" "]",
   infix_cons = (6, "::")
 } end;
 
 
 
-(** SML/OCaml generic part **)
+(** SML/OML generic part **)
 
 fun ml_program_of_program ctxt module_name reserved identifiers =
   let
@@ -953,8 +953,8 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
 val serializer_sml : Code_Target.serializer =
   Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_sml_module print_sml_stmt "ML");
 
-val serializer_ocaml : Code_Target.serializer =
-  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_ocaml_module print_ocaml_stmt "ocaml");
+val serializer_OML : Code_Target.serializer =
+  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_OML_module print_OML_stmt "OML");
 
 
 (** Isar setup **)
@@ -975,15 +975,15 @@ val _ = Theory.setup
           "isabelle process -e 'datatype ref = datatype Unsynchronized.ref' -f 'ROOT.ML' -l Pure"},
       evaluation_args = []})
   #> Code_Target.add_language
-    (target_OCaml, {serializer = serializer_ocaml, literals = literals_ocaml,
+    (target_OML, {serializer = serializer_OML, literals = literals_OML,
       check = {env_var = "ISABELLE_OCAMLFIND",
         make_destination = fn p => p + Path.explode "ROOT.ml"
-          (*extension demanded by OCaml compiler*),
+          (*extension demanded by OML compiler*),
         make_command = fn _ =>
-          "\"$ISABELLE_OCAMLFIND\" ocamlopt -w -p-u -package zarith -linkpkg ROOT.ml </dev/null"},
+          "\"$ISABELLE_OCAMLFIND\" OMLopt -w -p-u -package zarith -linkpkg ROOT.ml </dev/null"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
-    [(target_SML, SOME (2, fun_syntax)), (target_OCaml, SOME (2, fun_syntax))]))
+    [(target_SML, SOME (2, fun_syntax)), (target_OML, SOME (2, fun_syntax))]))
   #> fold (Code_Target.add_reserved target_SML) ML_Syntax.reserved_names
   #> fold (Code_Target.add_reserved target_SML) [
       "ref", (*rebinding is illegal*)
@@ -992,7 +992,7 @@ val _ = Theory.setup
       "Fail",
       "div", "mod", (*standard infixes*)
       "IntInf"]
-  #> fold (Code_Target.add_reserved target_OCaml) [
+  #> fold (Code_Target.add_reserved target_OML) [
       "and", "as", "assert", "begin", "class",
       "constraint", "do", "done", "downto", "else", "end", "exception",
       "external", "false", "for", "fun", "function", "functor", "if",
@@ -1001,6 +1001,6 @@ val _ = Theory.setup
       "sig", "struct", "then", "to", "true", "try", "type", "val",
       "virtual", "when", "while", "with"
     ]
-  #> fold (Code_Target.add_reserved target_OCaml) ["failwith", "mod", "Z"]);
+  #> fold (Code_Target.add_reserved target_OML) ["failwith", "mod", "Z"]);
 
 end; (*struct*)
