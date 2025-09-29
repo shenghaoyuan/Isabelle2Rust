@@ -430,12 +430,18 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                           deresolve (t :: ts)
                       |> intro_vars (build (fold Code_Thingol.add_varnames ts));
                   in
-                    concat (
-                      (if is_pseudo then [str "()"]
-                        else map (print_term is_pseudo_fun some_thm vars BR) ts)
-                      @ str "="
-                      @@ print_term is_pseudo_fun some_thm vars NOBR t
+                    Pretty.block_enclose (
+                      (if is_pseudo then (str "()")
+                      else 
+                        Pretty.block(
+                          str "("
+                          :: commas_append (map (print_term is_pseudo_fun some_thm vars BR) ts)
+                          @ [str ") {"]
+                        )
+                      ),
+                      str "}"
                     )
+                    [print_term is_pseudo_fun some_thm vars NOBR t]
                   end
               | print_eqns _ (eqs as eq :: eqs') =
                   let
@@ -446,11 +452,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   in
                     Pretty.block_enclose(
                       Pretty.block (
-                        (str "="
-                        :: Pretty.brk 1
-                        :: str "| "
+                        (str "("
                         :: Pretty.commas dummy_parms)
-                        @ [str " | {"]
+                        @ [str ") {"]
                       ),
                       str "}"
                     )
@@ -539,8 +543,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 (str o deresolve) sym,
                 str "();;"
               ];
+            val head = (if Code_Namespace.not_private export then "pub fn" else "fn");
             val (sig_ps, (ps, p)) = (apsnd split_last o split_list)
-              (print_def' "let rec" binding :: map (print_def' "and" o snd) exports_bindings);
+              (print_def' head binding :: map (print_def' head o snd) exports_bindings);
             val pseudo_ps = map print_pseudo_fun pseudo_funs;
           in pair
             (map_filter (fn (export, p) => if Code_Namespace.not_private export then SOME p else NONE)
@@ -557,7 +562,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           end
      | print_stmt export (ML_Datas (datas)) = 
           let
-            val decl_ps = map (print_datatype_decl "enum") datas;
+            val head = (if Code_Namespace.not_private export then "pub enum" else "enum");
+            val decl_ps = map (print_datatype_decl head) datas;
             val (ps, p) = split_last decl_ps;
           in pair
             (if Code_Namespace.is_public export
