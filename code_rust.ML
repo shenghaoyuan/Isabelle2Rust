@@ -139,6 +139,38 @@ fun tuplify _ _ [] = NONE
   | tuplify print fxy [x] = SOME (print fxy x)
   | tuplify print _ xs = SOME (enum "," "(" ")" (map (print NOBR) xs));
 
+fun to_snake_case s =
+  let
+    val cs = String.explode s
+    fun is_upper c = Char.isUpper c;
+    fun is_lower c = Char.isLower c;
+    fun aux [] = []
+      | aux [c] = [Char.toLower c]
+      | aux (c1 :: c2 :: cs) =
+           if is_upper c1 andalso is_lower c2 then
+             #"_" :: Char.toLower c1 :: aux (c2 :: cs)
+           else if is_upper c1 andalso is_upper c2 then
+             Char.toLower c1 :: aux (c2 :: cs)
+           else
+             Char.toLower c1 :: aux (c2 :: cs)
+    fun auxx [] = []
+      | auxx [c] = [Char.toLower c]
+      | auxx (c :: cs) = Char.toLower c :: aux cs
+  in String.implode (auxx cs) end;
+
+fun to_upper_camel_case s =
+  let
+    val cs = String.explode s
+    fun aux [] = []
+      | aux [c] = [c]
+      | aux (c1 :: c2 :: cs) =
+        if (c1 = #"_") then Char.toUpper c2 :: aux cs
+        else c1 :: aux (c2 :: cs)
+    fun auxx [] = []
+      | auxx [c] = [Char.toUpper c]
+      | auxx (c :: cs) = Char.toUpper c :: aux cs
+  in String.implode (auxx cs) end;
+
 (** Caml serializer **)
 
 val print_rust_string =
@@ -571,16 +603,16 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           end;
   in print_stmt end;
 
+(** print module **)
+
 fun print_ocaml_module name decls body =
-  Pretty.chunks2 (
-    Pretty.chunks [
-      str ("module " ^ name ^ " : sig"),
-      (indent 2 o Pretty.chunks) decls,
-      str "end = struct"
-    ]
-    :: body
-    @| str ("end;; (*struct " ^ name ^ "*)")
-  );
+  Pretty.block_enclose (
+    str ("mod " ^ 
+      to_snake_case name ^ 
+      " {"),
+    str ("}")
+  )
+  [Pretty.chunks2 body];
 
 val literals_ocaml = let
   fun numeral_ocaml k = if k < 0
@@ -598,48 +630,10 @@ in Literals {
 (** namify **)
 
 fun variant_snake_case s ctxt =
-  let
-    val cs = String.explode s;
-    fun to_snake_case cs =
-      let
-        fun is_upper c = Char.isUpper c;
-        fun is_lower c = Char.isLower c;
-        fun aux [] = []
-          | aux [c] = [Char.toLower c]
-          | aux (c1 :: c2 :: cs) =
-              if is_upper c1 andalso is_lower c2 then
-                #"_" :: Char.toLower c1 :: aux (c2 :: cs)
-              else if is_upper c1 andalso is_upper c2 then
-                Char.toLower c1 :: aux (c2 :: cs)
-              else
-                Char.toLower c1 :: aux (c2 :: cs)
-        fun auxx [] = []
-          | auxx [c] = [Char.toLower c]
-          | auxx (c :: cs) = Char.toLower c :: aux cs
-      in auxx cs end;
-    val s_snake = to_snake_case cs
-  in
-    ctxt |> Name.variant (String.implode s_snake)
-  end;
+    ctxt |> Name.variant (to_snake_case s)
 
 fun variant_upper_camel_case s ctxt =
-  let
-    val cs = String.explode s;
-    fun to_upper_camel_case cs =
-      let
-        fun aux [] = []
-          | aux [c] = [c]
-          | aux (c1 :: c2 :: cs) =
-            if (c1 = #"_") then Char.toUpper c2 :: aux cs
-            else c1 :: aux (c2 :: cs)
-        fun auxx [] = []
-          | auxx [c] = [Char.toUpper c]
-          | auxx (c :: cs) = Char.toUpper c :: aux cs
-      in auxx cs end;
-    val s_camel = to_upper_camel_case cs
-  in
-    ctxt |> Name.variant (String.implode s_camel)
-  end;
+    ctxt |> Name.variant (to_upper_camel_case s)
 
 (** SML/Caml generic part **)
 
