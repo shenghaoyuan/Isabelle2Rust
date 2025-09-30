@@ -409,7 +409,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       deresolve (t :: ts)
                   |> intro_vars (build (fold Code_Thingol.add_varnames ts));
                   (* fun is_deref: Code_Thingol.iterm -> (bool list) option 
-                  computes what typeco param is boxed & need to be dereference
+                    computes what typeco param is boxed & need to be dereference
                   *)
                   fun is_deref t = 
                   (case t of ((IConst (const as {sym as (Constant c), ...})) `$ _)
@@ -614,7 +614,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
 fun print_ocaml_module name decls body =
   Pretty.block_enclose (
     str ("mod " ^ 
-      to_snake_case name ^ 
+      name ^ 
       " {"),
     str ("}")
   )
@@ -842,10 +842,29 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     end;     
 
 
+    (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
+      modify module path format from "A.b" to "a::b"
+    *)
+    fun modify_deresolver deresolver sym = 
+      let
+        val sname = deresolver sym
+        fun dot_to_colons s =
+          let
+            fun loop [] acc = String.implode (rev acc)
+              | loop (c::cs) acc =
+                  if (c = #".") then loop cs (#":" :: #":" :: acc) 
+                  else loop cs (c :: acc)
+          in loop (String.explode s) [] end
+        val path = dot_to_colons sname
+      in
+        if List.exists (fn c => (c = #":")) (String.explode path) then "crate::"^path
+        else path
+      end
+
     (* print statements *)
     fun print_stmt prefix_fragments (_, (export, stmt)) = (print_ml_stmt
       tyco_syntax const_syntax (make_vars reserved_syms)
-      (Code_Thingol.is_constr program) (deresolver prefix_fragments)
+      (Code_Thingol.is_constr program) (modify_deresolver (deresolver prefix_fragments))
       is_inf_typeco is_invdependent_typecos)
       export stmt
       |> apfst (fn decl => if Code_Namespace.not_private export then SOME decl else NONE);
