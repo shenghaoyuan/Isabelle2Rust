@@ -190,7 +190,7 @@ val print_rust_string =
   in quote o translate_string char end;
 
 fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
-  is_inf_typeco is_invdependent_typecos =
+  is_inf_typeco is_invdependent_typecos lookup_constant_typeco =
   let
     val _ = tracing "\nprint_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
@@ -408,18 +408,46 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   |> intro_base_names_for (is_none o const_syntax)
                       deresolve (t :: ts)
                   |> intro_vars (build (fold Code_Thingol.add_varnames ts));
-                  (* fun is_deref: Code_Thingol.iterm -> (bool list) option 
-                    computes what typeco param is boxed & need to be dereference
-                  *)
-                  fun is_deref t = 
+                (* fun is_deref: Code_Thingol.iterm -> (bool list) option 
+                  computes what typeco param is boxed & need to be dereference
+                *)
+                fun is_deref t = 
                   (case t of ((IConst (const as {sym as (Constant c), ...})) `$ _)
                     => SOME (is_invdependent_typecos const)
                   | _ => NONE)
                 val is_derefs = map is_deref ts
+                (* look up the enum type that iterm t belongs to
+                  for iterm t as (t1 `$ t2)
+                *)
+                fun lookup_typeco t = 
+                  (case t of 
+                    (IConst (const as {sym as (Constant c), ...}))
+                      => lookup_constant_typeco sym
+                    | ((IConst (const as {sym as (Constant c), ...})) `$ _)
+                      => lookup_constant_typeco sym
+                    | _ => NONE)
+                fun print_cons (SOME s) =
+                  let 
+                    fun after_last_dot s =
+                      (case List.rev (String.fields (fn c => c = #".") s) of
+                          [] => s
+                        | x::_ => x)
+                    in to_upper_camel_case (after_last_dot s) end
+                  | print_cons NONE = ""
+                fun print_pattern_term t = 
+                  let
+                    val typeco_s = print_cons (lookup_typeco t)
+                    fun typeco_append co_s t = (case co_s of 
+                      "" => t
+                      | co => Pretty.block [str (co^"::"), t])
+                    val term = print_term is_pseudo_fun some_thm vars NOBR t
+                  in
+                    typeco_append typeco_s term
+                  end
               in concat [
                 to_tuple ts (
                     (Pretty.block o commas)
-                      (map (print_term is_pseudo_fun some_thm vars NOBR) ts)),
+                      (map print_pattern_term ts)),
                 str "=>",
                 print_term_gen is_pseudo_fun (SOME is_derefs) some_thm vars NOBR t 
               ] end;
@@ -839,7 +867,16 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
           "\n DOM="^(wrap_list (map dest_itype dom))^"\n DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs)))
       in
         map (List.exists (fn s => s = dttypcon)) dom_dpdncs
-    end;     
+    end;
+  fun lookup_constant_typeco_gen program sym = 
+    let
+      val stmt = Code_Symbol.Graph.get_node program sym
+    in
+       (case stmt 
+       of Code_Thingol.Datatypecons c => SOME c
+        | _ => NONE)
+    end; 
+  val lookup_constant_typeco = lookup_constant_typeco_gen program;
 
 
     (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
@@ -865,7 +902,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     fun print_stmt prefix_fragments (_, (export, stmt)) = (print_ml_stmt
       tyco_syntax const_syntax (make_vars reserved_syms)
       (Code_Thingol.is_constr program) (modify_deresolver (deresolver prefix_fragments))
-      is_inf_typeco is_invdependent_typecos)
+      is_inf_typeco is_invdependent_typecos lookup_constant_typeco)
       export stmt
       |> apfst (fn decl => if Code_Namespace.not_private export then SOME decl else NONE);
 
