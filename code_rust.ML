@@ -110,7 +110,7 @@ fun print_debug_info_node ((sym, stmt), syms) =
 
 fun commas_append prts = 
   let 
-    fun combine (x1::x2::x3::l) = Pretty.block [x1, x2, x3] :: combine l   
+    fun combine (x1::x2::x3::l) = Pretty.block [x1, x2, str" "] :: combine l   
       | combine [x] = [x]
       | combine [] = []
   in
@@ -282,6 +282,54 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               | NONE => print_case is_pseudo_fun some_thm vars fxy case_expr)
           end
     and print_term is_pseudo_fun some_thm vars fxy t = print_term_gen is_pseudo_fun NONE some_thm vars fxy t
+    and print_term_with_cons print_term t = 
+      let
+        (* look up the enum type that iterm t belongs to
+          for iterm t as (Iconst c) or ((Iconst c) `$ t2)
+        *)
+        val _ = tracing ("print_term_with_cons"^(print_debug_info_iterm t))
+        fun lookup_typeco t = 
+          (case t of 
+            (IConst (const as {sym as (Constant c), ...}))
+              => lookup_constant_typeco sym
+            | ((IConst (const as {sym as (Constant c), ...})) `$ _)
+              => lookup_constant_typeco sym
+            | _ => NONE)
+        fun print_cons (SOME s) =
+          let 
+            fun after_last_dot s =
+              (case List.rev (String.fields (fn c => c = #".") s) of
+                  [] => s
+                | x::_ => x)
+            in to_upper_camel_case (after_last_dot s) end
+        | print_cons NONE = ""
+        val typeco_s = print_cons (lookup_typeco t)
+        fun typeco_append co_s t_s = 
+          let
+          fun insert_before_last s insert =
+            let
+              val parts = String.fields (fn c => c = #":") s
+              val filtered = List.filter (fn x => x <> "") parts
+            in
+              case rev filtered of
+                  [] => insert
+                | [x] => String.concat [insert, "::", x]
+                | last::rest_rev =>
+                    let
+                      val before_last = rev rest_rev
+                    in String.concatWith "::" (before_last @ [insert, last]) end
+            end
+          in  
+            (case co_s of 
+              "" => t_s
+              | co => insert_before_last t_s co_s)
+          end
+        val term = print_term t
+        val term_with_cons = typeco_append typeco_s (Pretty.string_of term)
+        val _ = tracing (" ="^term_with_cons)
+      in
+        str term_with_cons
+      end
     and print_app_expr is_pseudo_fun is_derefs_op some_thm vars (app as ((const as { sym, dicts, dom, ... }), ts)) =
       let 
         val _ = tracing ("print_app_expr CONST="^
@@ -416,40 +464,13 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                     => SOME (is_invdependent_typecos const)
                   | _ => NONE)
                 val is_derefs = map is_deref ts
-                (* look up the enum type that iterm t belongs to
-                  for iterm t as (t1 `$ t2)
-                *)
-                fun lookup_typeco t = 
-                  (case t of 
-                    (IConst (const as {sym as (Constant c), ...}))
-                      => lookup_constant_typeco sym
-                    | ((IConst (const as {sym as (Constant c), ...})) `$ _)
-                      => lookup_constant_typeco sym
-                    | _ => NONE)
-                fun print_cons (SOME s) =
-                  let 
-                    fun after_last_dot s =
-                      (case List.rev (String.fields (fn c => c = #".") s) of
-                          [] => s
-                        | x::_ => x)
-                    in to_upper_camel_case (after_last_dot s) end
-                  | print_cons NONE = ""
-                fun print_pattern_term t = 
-                  let
-                    val typeco_s = print_cons (lookup_typeco t)
-                    fun typeco_append co_s t = (case co_s of 
-                      "" => t
-                      | co => Pretty.block [str (co^"::"), t])
-                    val term = print_term is_pseudo_fun some_thm vars NOBR t
-                  in
-                    typeco_append typeco_s term
-                  end
-              in concat [
+                val print_pattern_term = print_term_with_cons (print_term is_pseudo_fun some_thm vars NOBR)
+                val print_expr_term = print_term_with_cons (print_term_gen is_pseudo_fun (SOME is_derefs) some_thm vars NOBR)
+              in Pretty.block [
                 to_tuple ts (
-                    (Pretty.block o commas)
-                      (map print_pattern_term ts)),
-                str "=>",
-                print_term_gen is_pseudo_fun (SOME is_derefs) some_thm vars NOBR t 
+                  Pretty.block(commas_append (map print_pattern_term ts))),
+                str " => ",
+                print_expr_term t 
               ] end;
             fun print_eqns is_pseudo [((ts, t), (some_thm, _))] =
                   let
@@ -578,7 +599,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in pair
             (map_filter (fn (export, p) => if Code_Namespace.not_private export then SOME p else NONE)
               ((export :: map fst exports_bindings) ~~ sig_ps))
-            (Pretty.chunks (ps @ p :: pseudo_ps))
+            (Pretty.chunks2 (ps @ p :: pseudo_ps))
           end
      | print_stmt _ (ML_Datas [(tyco, (vs, []))]) =
           let
@@ -787,6 +808,10 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     val _ = tracing "Build Program Accomplished"
 
     (* global info look-up functions*)
+    (* safe get_node, handle UNDEF exception*)
+    fun get_node program sym =         
+      (Code_Symbol.Graph.get_node program sym) 
+      handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing "EXCEPTION" in Code_Thingol.NoStmt end
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
@@ -824,11 +849,11 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
           |> map dest_itype
           |> List.concat
           |> dedup
-          | dest_types x = raise Fail ("dest_types: "^ print_debug_info_thingol_stmt x)
-        val drct_dpdncs = dest_types (Code_Symbol.Graph.get_node program sym)
+          | dest_types x = [] (*raise Fail ("dest_types: "^ print_debug_info_thingol_stmt x)*)
+        val drct_dpdncs = dest_types (get_node program sym)
         val snd_dpdncs = drct_dpdncs@dpdncs 
           |> map (fn t => (Type_Constructor t)) 
-          |> map (Code_Symbol.Graph.get_node program)
+          |> map (get_node program)
           |> map dest_types
           |> List.concat
           |> (fn l => l@drct_dpdncs@dpdncs)
@@ -858,7 +883,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
       let 
         fun dest_itype (ITyVar vn) = vn
           | dest_itype (v `%% _ (*vns*)) = v   
-        val dttypcon = (fn (Code_Thingol.Datatypecons x) => x) (Code_Symbol.Graph.get_node program sym)
+        val dttypcon = (fn (Code_Thingol.Datatypecons x) => x) (get_node program sym)
         val dom_typs = dom
           |> map dest_itype
           |> map (fn x => Type_Constructor x)
@@ -870,7 +895,7 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
     end;
   fun lookup_constant_typeco_gen program sym = 
     let
-      val stmt = Code_Symbol.Graph.get_node program sym
+      val stmt = get_node program sym
     in
        (case stmt 
        of Code_Thingol.Datatypecons c => SOME c
