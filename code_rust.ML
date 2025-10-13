@@ -200,7 +200,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun deref s = "*"^s val _ = deref
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let
-        val _ = tracing ("print_tyco_expr_gen SYM="^print_debug_info_sym sym)
         val isinf = is_inf_typeco (sym, tys)
         val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
           else deresolve sym
@@ -472,7 +471,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 str " => ",
                 print_expr_term t 
               ] end;
-            fun print_eqns is_pseudo [((ts, t), (some_thm, _))] =
+            fun print_eqns _ is_pseudo [((ts, t), (some_thm, _))] =
                   let
                     val vars = reserved
                       |> intro_base_names_for (is_none o const_syntax)
@@ -492,18 +491,36 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                     )
                     [print_term is_pseudo_fun some_thm vars NOBR t]
                   end
-              | print_eqns _ (eqs as eq :: eqs') =
+              | print_eqns (vs_ty as (vs, ty)) _ (eqs as eq :: eqs') =
                   let
+                    val _ = tracing "print_eqns"
                     val vars = reserved
                       |> intro_base_names_for (is_none o const_syntax)
                            deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
+                    val _ = tracing (" TY="^print_debug_info_itype ty)
+                    (* extract function type like "fun`%%[A, fun`%%[B, C]]"
+                      to [A, B, C]    
+                    *)
+                    fun extract_typ (_`%%[ty1, ty2]) = 
+                      print_typ (INFX (1, X)) ty1
+                      :: (case ty2 
+                        of fs as (_`%%[_, _]) => extract_typ fs
+                        | _ => [print_typ (INFX (1, X)) ty2])
+                    val typs = extract_typ ty
+                    val _ = tracing (" extracting"^wrap_list (map Pretty.string_of typs))
+                    val param_typs = List.take (typs, (List.length dummy_parms))
+                    val ret_typs = List.drop (typs, (List.length dummy_parms))
+                    val dummy_parms_with_typs = ListPair.zip (dummy_parms, param_typs)
+                      |> map (fn (prt1, prt2) => Pretty.block ([prt1, str ": ", prt2]))
                   in
                     Pretty.block_enclose(
                       Pretty.block (
                         (str "("
-                        :: Pretty.commas dummy_parms)
-                        @ [str ") {"]
+                        :: Pretty.commas dummy_parms_with_typs)
+                        @ str ") -> "
+                        :: Pretty.separate "*" ret_typs
+                        @ [str " {"]
                       ),
                       str "}"
                     )
@@ -528,7 +545,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             (concat (
               prolog
               :: print_dict_args vs
-              @| print_eqns (is_pseudo_fun (Constant const)) eqs
+              @| print_eqns vs_ty (is_pseudo_fun (Constant const)) eqs
             ))
           end
       | print_def is_pseudo_fun _ definer
@@ -953,6 +970,8 @@ val serializer_ocaml : Code_Target.serializer =
 
 (** Isar setup **)
 
+(*((fixity -> itype -> Pretty.T)
+  -> fixity -> itype list -> Pretty.T)*)
 fun fun_syntax print_typ fxy [ty1, ty2] =
   brackify_infix (1, R) fxy (
     print_typ (INFX (1, X)) ty1,
