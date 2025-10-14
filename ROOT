@@ -15,6 +15,7 @@ session Go_Test_Quick_Local in "test/quick" = Rust +
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
+    "*:**.toml"
 
 session Rust_Test_Quick in "mytest/quick" = Rust +
   description "Quick test session with BigInts and RBTs"
@@ -27,6 +28,7 @@ session Rust_Test_Quick in "mytest/quick" = Rust +
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
+    "*:**.toml"
 
 session Max_Test in "maxTest" = Rust +
   description "max test"
@@ -37,6 +39,7 @@ session Max_Test in "maxTest" = Rust +
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
+    "*:**.toml"
 
 session Get_Test in "getTest" = Rust +
   description "get test"
@@ -47,6 +50,7 @@ session Get_Test in "getTest" = Rust +
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
+    "*:**.toml"
 
 session Generic_Test in "genericTest" = Rust +
   description "generic test"
@@ -57,3 +61,4 @@ session Generic_Test in "genericTest" = Rust +
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
+    "*:**.toml"

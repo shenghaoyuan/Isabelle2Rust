@@ -812,11 +812,16 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
       memorize_data = K I, modify_stmts = modify_stmts }
   end;
 
-fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
+fun serialize_ml rust_module rust_version rust_edition
+    print_ml_module print_ml_stmt ml_extension ctxt
     { module_name, reserved_syms, identifiers, includes,
       class_syntax = _, tyco_syntax, const_syntax } program exports =
   let
     val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node (Code_Symbol.Graph.dest program))^"\n")
+
+    val rust_module = if rust_module = "" then "isabelle/exported" else rust_module;
+    val rust_version = if rust_version = "" then "0.1.0" else rust_module;
+    val rust_edition = if rust_edition = "" then "2024" else rust_module;
 
     (* build program *)
     val { deresolver, hierarchical_program = ml_program } =
@@ -953,19 +958,33 @@ fun serialize_ml print_ml_module print_ml_stmt ml_extension ctxt
       let
         val (raw_decls, body) = split_list xs;
         val decls = maps these raw_decls
-      in (NONE, print_ml_module base decls body) end;
+      in (SOME [str base], print_ml_module base decls body) end;
 
     (* serialization *)
-    val p = Pretty.chunks2 (map snd includes
-      @ map snd (Code_Namespace.print_hierarchical {
+    val ps = Code_Namespace.print_hierarchical {
         print_module = print_module, print_stmt = print_stmt,
-        lift_markup = apsnd } ml_program));
+        lift_markup = K I } ml_program;
+    val _ = tracing ("\nExported Program: "^wrap_list (map (fn x => case x of NONE => "None" | SOME prts => "Some "^wrap_list (map Pretty.string_of prts)) (map fst ps)))
+    val srcs = ListPair.zip 
+      (map fst ps
+        |> map (fn (SOME [x]) => ["src", (Pretty.string_of x)^ml_extension]), 
+      map snd includes @ map snd ps)
+    val toml = pair 
+      (["cargo.toml"])
+      (Pretty.chunks2 ([
+          concat [str "[package]\n", 
+                str "name =",(str o print_rust_string) rust_module, str "\n",
+                str "version =",(str o print_rust_string) rust_version, str "\n",
+                str "edition =",(str o print_rust_string) rust_edition],
+          str "[dependencies]"
+      ]))
   in
-    (Code_Target.Singleton (ml_extension, p), try (deresolver []))
+    (Code_Target.Hierarchy (toml :: srcs), 
+    try (deresolver []))
   end;
 
 val serializer_ocaml : Code_Target.serializer =
-  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml print_ocaml_module print_ocaml_stmt "rs");
+  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml "" "" "" print_ocaml_module print_ocaml_stmt ".rs");
 
 
 (** Isar setup **)
