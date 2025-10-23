@@ -387,30 +387,25 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
     and print_case _ _ _ _ { clauses = [], ... } =
           (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
-      | print_case is_pseudo_fun some_thm vars _ (case_expr as { clauses = [_], ... }) =
+      | print_case is_pseudo_fun some_thm vars _ { term = t, typ = _, clauses = clauses, ... } =
           let
-            val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
-            fun print_let ((pat, _), t) vars =
-              vars
-              |> print_bind is_pseudo_fun some_thm NOBR pat
-              |>> (fn p => concat
-                  [str "let", p, str "=", print_term is_pseudo_fun some_thm vars NOBR t, str "in"])
-            val (ps, vars') = fold_map print_let binds vars;
-          in
-            brackets [Pretty.chunks ps, print_term is_pseudo_fun some_thm vars' NOBR body]
-          end
-      | print_case is_pseudo_fun some_thm vars _ { term = t, typ = _, clauses = clause :: clauses, ... } =
-          let
-            fun print_select delim (pat, body) =
+            fun print_select (pat, body) =
               let
                 val (p, vars') = print_bind is_pseudo_fun some_thm NOBR pat vars;
-              in concat [str delim, p, str "=>", print_term is_pseudo_fun some_thm vars' NOBR body] end;
+              in Pretty.block [p, str " => ", print_term is_pseudo_fun some_thm vars' NOBR body] end;
           in
             brackets (
-              str "match"
-              :: print_term is_pseudo_fun some_thm vars NOBR t
-              :: print_select "with" clause
-              :: map (print_select "|") clauses
+            [Pretty.block_enclose(
+              Pretty.block(
+                [str "match",
+                Pretty.brk 1,
+                print_term is_pseudo_fun some_thm vars NOBR t,
+                Pretty.brk 1,
+                str "{ "]
+              ),
+              str "}"
+            )
+            (map print_select clauses)]
             )
           end;
     fun print_val_decl print_typscheme (sym, typscheme) = concat
@@ -423,19 +418,24 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           | print_co ((co, _), tys) = 
             concat [
               str (deresolve_const co), 
-              Pretty.block([
+              Pretty.block(
+                [
                 str "(",
                 enum " *" "" "" (map (print_typ_gen false (INFX (2, X))) tys), 
-                str")"])
+                str")"]
+              )
               ];
       in
         Pretty.block_enclose (
-          Pretty.block (
-            [str definer,
-            Pretty.brk 1,
-            print_tyco_expr (Type_Constructor tyco, map ITyVar vs),
-            str " { "]
-          ),          
+          Pretty.chunks([
+            str "#[derive(Clone)]",
+            Pretty.block (
+              [str definer,
+              Pretty.brk 1,
+              print_tyco_expr (Type_Constructor tyco, map ITyVar vs),
+              str " { "]
+            )
+          ]),         
           str "}"          
         )
         (commas_append (map print_co cos))
@@ -446,7 +446,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val _ = tracing ("print_def FUN of " ^const^ " = "^
               print_debug_info_thingol_stmt (Code_Thingol.Fun ((vs_ty,eqs),NONE)))
             fun to_tuple l prt = if (length l >= 2) then Pretty.block ([str "(", prt, str ")"]) else prt;
-            fun print_eqn ((ts, t), (some_thm, _)) =
+            fun print_eqn is_degenerated ((ts, t), (some_thm, _)) =
               let
                 val _ = tracing ("print_def EQN of TS =" ^ 
                   wrap_list (map print_debug_info_iterm ts) ^ " T=" ^
@@ -465,38 +465,22 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 val is_derefs = map is_deref ts
                 val print_pattern_term = print_term_with_cons (print_term is_pseudo_fun some_thm vars NOBR)
                 val print_expr_term = print_term_with_cons (print_term_gen is_pseudo_fun (SOME is_derefs) some_thm vars NOBR)
-              in Pretty.block [
+              in 
+                if is_degenerated (*only 1 pattern clause in eqs*)
+                then print_expr_term t 
+                else Pretty.block [
                 to_tuple ts (
                   Pretty.block(commas_append (map print_pattern_term ts))),
                 str " => ",
                 print_expr_term t 
-              ] end;
-            fun print_eqns _ is_pseudo [((ts, t), (some_thm, _))] =
-                  let
-                    val vars = reserved
-                      |> intro_base_names_for (is_none o const_syntax)
-                          deresolve (t :: ts)
-                      |> intro_vars (build (fold Code_Thingol.add_varnames ts));
-                  in
-                    Pretty.block_enclose (
-                      (if is_pseudo then (str "()")
-                      else 
-                        Pretty.block(
-                          str "("
-                          :: commas_append (map (print_term is_pseudo_fun some_thm vars BR) ts)
-                          @ [str ") {"]
-                        )
-                      ),
-                      str "}"
-                    )
-                    [print_term is_pseudo_fun some_thm vars NOBR t]
-                  end
-              | print_eqns (vs_ty as (vs, ty)) _ (eqs as eq :: eqs') =
+                ] 
+              end;
+            fun print_eqns (vs_ty as (vs, ty)) is_pseudo eqs =
                   let
                     val _ = tracing "print_eqns"
                     val vars = reserved
-                      |> intro_base_names_for (is_none o const_syntax)
-                           deresolve (map (snd o fst) eqs)
+                          |> intro_base_names_for (is_none o const_syntax)
+                              deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
                     val _ = tracing (" TY="^print_debug_info_itype ty)
                     (* extract function type like "fun`%%[A, fun`%%[B, C]]"
@@ -507,6 +491,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       :: (case ty2 
                         of fs as (_`%%[_, _]) => extract_typ fs
                         | _ => [print_typ (INFX (1, X)) ty2])
+                      | extract_typ _ = [str "/*typ_error*/"]
                     val typs = extract_typ ty
                     val _ = tracing (" extracting"^wrap_list (map Pretty.string_of typs))
                     val param_typs = List.take (typs, (List.length dummy_parms))
@@ -524,6 +509,10 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       ),
                       str "}"
                     )
+                    (case eqs 
+                    of [eq] => 
+                    ([print_eqn true eq])
+                    | _ =>
                     ( [Pretty.block_enclose (
                         Pretty.block (
                           [str "match",
@@ -534,8 +523,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                         ),
                         str "}"
                       )
-                      (commas_append (map print_eqn eqs))]
-                    )
+                      (commas_append (map (print_eqn false) eqs))]
+                    ))
                   end;
             val prolog = if needs_typ then
               concat [str definer, (str o deresolve_const) const, str ":", print_typ NOBR ty]
@@ -964,7 +953,7 @@ fun serialize_ml rust_module rust_version rust_edition
     val ps = Code_Namespace.print_hierarchical {
         print_module = print_module, print_stmt = print_stmt,
         lift_markup = K I } ml_program;
-    val _ = tracing ("\nExported Program: "^wrap_list (map (fn x => case x of NONE => "None" | SOME prts => "Some "^wrap_list (map Pretty.string_of prts)) (map fst ps)))
+    val _ = tracing ("\nExported "^(string_of_int (List.length ps))^" Programs: "^wrap_list (map (fn x => case x of NONE => "None" | SOME prts => "Some "^wrap_list (map Pretty.string_of prts)) (map fst ps)))
     val srcs = ListPair.zip 
       (map fst ps
         |> map (fn (SOME [x]) => ["src", (Pretty.string_of x)^ml_extension]), 
