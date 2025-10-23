@@ -110,7 +110,7 @@ fun print_debug_info_node ((sym, stmt), syms) =
 
 fun commas_append prts = 
   let 
-    fun combine (x1::x2::x3::l) = Pretty.block [x1, x2, str" "] :: combine l   
+    fun combine (x1::x2::_::l) = Pretty.block [x1, x2, str" "] :: combine l   
       | combine [x] = [x]
       | combine [] = []
   in

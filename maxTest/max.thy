@@ -16,11 +16,11 @@ fun mymax1:: "int \<Rightarrow> int \<Rightarrow> int" where
 
 
 export_code  mymax in OCaml
-export_code  mymax in Rust
+export_code  mymax in Rust    
 export_code  mymax1 in OML
 export_code  mymax1 in StdML
 export_code  mymax1 in Rust
- (* module_name maxTest *)
+ (* module_name maxTest *)        
 
                     
 end
