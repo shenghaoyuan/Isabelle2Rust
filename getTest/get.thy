@@ -15,6 +15,11 @@ fun get :: "option \<Rightarrow> int" where
 " get None = 0" |
 " get (Rec op) = get op" 
 
+fun set :: "option \<Rightarrow> int \<Rightarrow> option" where
+  "set (Some _) x = Some x" |
+  "set None x = Some x" |
+  "set (Rec op) x = Rec (set op x)"
+
 fun mugeta :: "aoption \<Rightarrow> int" 
   and mugetb :: "boption \<Rightarrow> int" where
 " mugeta (Somea x) = x" | 
