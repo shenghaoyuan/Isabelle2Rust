@@ -116,7 +116,7 @@ datatype ml_binding =
         superinst_params: ((string * (const * int)) * (thm * bool)) list };
 
 datatype ml_stmt =
-    ML_Exc of string * (typscheme * int)  ()
+    ML_Exc of string * (typscheme * int)
   | ML_Val of ml_binding
   | ML_Funs of (Code_Namespace.export * ml_binding) list * Code_Symbol.T list
   | ML_Datas of (string * (vname list * ((string * vname list) * itype list) list)) list
