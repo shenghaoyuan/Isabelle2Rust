@@ -199,13 +199,13 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun box s = "Box<"^s^">"
     fun deref s = "*"^s val _ = deref
     fun print_tyco_expr_gen is_head (sym, tys) = 
-      let
+      let        
         val isinf = is_inf_typeco (sym, tys)
         val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
           else deresolve sym
       in
         case tys  
-       of [] => str tyconame
+       of [] => str tyconame                                                      
         | [ty] =>
           concat [print_typ_gen is_head BR ty, str tyconame]
         | tys =>
@@ -216,6 +216,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           | SOME (_, print) => print (print_typ_gen is_head) fxy tys)
       | print_typ_gen _ (*is_head*) _ (*fxy*) (ITyVar v) = str ("'" ^ v);
     fun print_tyco_expr (sym, tys) = print_tyco_expr_gen true (sym, tys);
+
     fun print_typ fxy ty = print_typ_gen true fxy ty;
     fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
     fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
