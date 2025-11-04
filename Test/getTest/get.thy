@@ -29,7 +29,7 @@ fun mugeta :: "aoption \<Rightarrow> int"
 " mugetb Noneb = 0" | 
 " mugetb (MutualRecb aop) = mugeta aop" 
 
-export_code get mugeta in Rust
-export_code get mugeta in OCaml
+export_code get mugeta set in Rust
+export_code get mugeta set in OCaml
                      
 end

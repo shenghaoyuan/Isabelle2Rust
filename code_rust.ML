@@ -198,7 +198,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     val deresolve_inst = deresolve o Class_Instance;
     fun box s = "Box<"^s^">"
     fun clone s = s^".clone()"
-    fun box_new s = "box::new("^s^")" val _ = box_new
+    fun box_new s = "Box::new("^s^")" val _ = box_new
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let        
         val isinf = is_inf_typeco (sym, tys)
@@ -306,25 +306,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         | print_cons NONE = ""
         val typeco_s = print_cons (lookup_typeco t)
         fun typeco_append co_s t_s = 
-          let
-          fun insert_before_last s insert =
-            let
-              val parts = String.fields (fn c => c = #":") s
-              val filtered = List.filter (fn x => x <> "") parts
-            in
-              case rev filtered of
-                  [] => insert
-                | [x] => String.concat [insert, "::", x]
-                | last::rest_rev =>
-                    let
-                      val before_last = rev rest_rev
-                    in String.concatWith "::" (before_last @ [insert, last]) end
-            end
-          in  
-            (case co_s of 
-              "" => t_s
-              | co => insert_before_last t_s co_s)
-          end
+          if co_s = "" then t_s
+          else co_s^"::"^t_s 
         val term = print_term t
         val term_with_cons = typeco_append typeco_s (Pretty.string_of term)
         val _ = tracing (" ="^term_with_cons)
@@ -358,7 +341,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               :: [Pretty.block (
                 str "("
                 :: (case is_derefs_op 
-                  of SOME is_derefs => commas_append (map_each (print_param_list (I, clone) is_derefs) ts)
+                  of SOME is_derefs => commas_append (map_each (print_param_list (ref_prcs, nonref_prcs) is_derefs) ts)
                   | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars BR) ts))   
                 @ [str ")"]
                 )]
@@ -463,7 +446,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   | _ => NONE)
                 val is_derefs = map is_deref ts
                 val print_pattern_term = print_term_with_cons (print_term is_pseudo_fun some_thm vars NOBR)
-                val print_expr_term = print_term_with_cons (print_term_gen is_pseudo_fun (SOME is_derefs) (I, clone) some_thm vars NOBR)
+                val print_expr_term = print_term_with_cons (print_term_gen is_pseudo_fun (SOME is_derefs) (box_new, clone) some_thm vars NOBR)
               in 
                 if is_degenerated (*only 1 pattern clause in eqs*)
                 then print_expr_term t 
@@ -666,14 +649,17 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
 
 (** print module **)
 
-fun print_ocaml_module name decls body =
+fun print_ocaml_module name decls imports body =
   Pretty.block_enclose (
     str ("mod " ^ 
       name ^ 
       " {"),
     str ("}")
   )
-  [Pretty.chunks2 body];
+  [Pretty.chunks2 (
+    if List.null imports then body
+    else (Pretty.chunks (map (fn i => str ("use crate::"^i^"::*;")) imports) :: body)
+  )];
 
 val literals_ocaml = let
   fun numeral_ocaml k = if k < 0
@@ -806,7 +792,10 @@ fun serialize_ml rust_module rust_version rust_edition
     { module_name, reserved_syms, identifiers, includes,
       class_syntax = _, tyco_syntax, const_syntax } program exports =
   let
-    val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node (Code_Symbol.Graph.dest program))^"\n")
+    val stmt_list = (Code_Symbol.Graph.dest program)
+    val sym_dpdnc_list = map (fn ((sym, _), children) => (sym, children)) stmt_list
+
+    val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node stmt_list)^"\n")
 
     val rust_module = if rust_module = "" then "isabelle/exported" else rust_module;
     val rust_version = if rust_version = "" then "0.1.0" else rust_module;
@@ -823,34 +812,34 @@ fun serialize_ml rust_module rust_version rust_edition
     fun get_node program sym =         
       (Code_Symbol.Graph.get_node program sym) 
       handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing "EXCEPTION" in Code_Thingol.NoStmt end
+    (*log-efficiency dedup*)
+    fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
+      ([], L2) => L2
+      | (L1, []) => L1
+      | (x1::rest1, x2::rest2) =>
+       if leq(x1, x2) then x1 :: merge leq (rest1, L2)
+       else x2 :: merge leq (L1, rest2);
+    fun mergesort leq (lst : string list) =
+      if (length lst) <= 1 then lst
+      else
+      let 
+        val m = (length lst) div 2
+        val (L1, L2) = (List.take(lst, m), List.drop(lst, m))
+      in
+        merge leq (mergesort leq L1, mergesort leq L2)
+      end;
+    fun dedup_sorted eq (lst : string list) = case lst 
+      of [] => []
+      | [x] => [x]
+      | x1 :: x2 :: rest =>
+        if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
+        else x1 :: dedup_sorted eq (x2 :: rest);
+    fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
     fun lookup_dependent_types_h program sym dpdncs =
       let 
-        fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
-            ([], L2) => L2
-          | (L1, []) => L1
-          | (x1::rest1, x2::rest2) =>
-              if leq(x1, x2) then x1 :: merge leq (rest1, L2)
-              else x2 :: merge leq (L1, rest2);
-        fun mergesort leq (lst : string list) =
-          if (length lst) <= 1 then
-            lst
-          else
-            let 
-              val m = (length lst) div 2
-              val (L1, L2) = (List.take(lst, m), List.drop(lst, m))
-            in
-              merge leq (mergesort leq L1, mergesort leq L2)
-            end;
-        fun dedup_sorted eq (lst : string list) = case lst of
-            [] => []
-          | [x] => [x]
-          | x1 :: x2 :: rest =>
-              if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
-              else x1 :: dedup_sorted eq (x2 :: rest);
-        fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
         fun dest_itype (ITyVar vn) = [vn]
           | dest_itype (v `%% vns) = v::(List.concat(map dest_itype vns))
         fun dest_types (Code_Thingol.Datatype (_(*vns*), cos)) = 
@@ -904,16 +893,57 @@ fun serialize_ml rust_module rust_version rust_edition
       in
         map (List.exists (fn s => s = dttypcon)) dom_dpdncs
     end;
-  fun lookup_constant_typeco_gen program sym = 
-    let
-      val stmt = get_node program sym
-    in
-       (case stmt 
-       of Code_Thingol.Datatypecons c => SOME c
-        | _ => NONE)
-    end; 
-  val lookup_constant_typeco = lookup_constant_typeco_gen program;
-
+    fun lookup_constant_typeco_gen program sym = 
+      let
+        val stmt = get_node program sym
+      in
+        (case stmt 
+        of Code_Thingol.Datatypecons c => SOME c
+          | _ => NONE)
+      end; 
+    val lookup_constant_typeco = lookup_constant_typeco_gen program;
+    
+    (*val module_imports: (string * string list) list
+    list of module name and its dependencies
+    *) 
+    val module_imports = 
+      let
+        fun before_first_dot s =
+          (case (String.fields (fn c => c = #".") s) 
+            of [] => s
+            | x::_ => x)
+        fun get_sym_name sym = case sym
+          of Constant a => a | Type_Constructor b => b | Type_Class c => c|
+          Class_Relation (d1, d2) => d1  | Class_Instance (e1, e2) => e1 | Module f => f
+        fun get_sym_module sym = before_first_dot (get_sym_name sym)
+        fun get_import_sym sym = 
+          let 
+            val module = get_sym_module sym
+            val children = Code_Symbol.Graph.immediate_succs program sym
+            fun add_dpdnc sym' dpdncs =
+              if List.exists (fn x => x = (get_sym_module sym')) dpdncs then dpdncs
+              else (get_sym_module sym')::dpdncs  
+          in
+            (module, fold add_dpdnc children [])  
+          end
+        fun get_imports sym imports = 
+          let 
+            val (module, import) = get_import_sym sym
+          in
+            if (List.exists (fn (mod, _) => (mod = module)) imports)
+            then (map (fn (mod, import') => 
+              if (mod = module) 
+              then (mod, dedup (import @ import'))
+              else (mod, import'))
+              imports)
+            else (module, import)::imports
+          end
+        val mod_dpdncs = fold get_imports (map fst sym_dpdnc_list) []
+        val mod_imports = map (fn (sym, dpdncs) => (sym, (filter (fn x => x <> sym) dpdncs))) mod_dpdncs
+        val _ = tracing (wrap_list(map (fn (mod, mods) => wrap_args ["mod="^mod, "imports="^(wrap_list mods)]) mod_imports)) 
+      in
+        mod_imports
+      end
 
     (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
       modify module path format from "A.b" to "a::b"
@@ -921,17 +951,12 @@ fun serialize_ml rust_module rust_version rust_edition
     fun modify_deresolver deresolver sym = 
       let
         val sname = deresolver sym
-        fun dot_to_colons s =
-          let
-            fun loop [] acc = String.implode (rev acc)
-              | loop (c::cs) acc =
-                  if (c = #".") then loop cs (#":" :: #":" :: acc) 
-                  else loop cs (c :: acc)
-          in loop (String.explode s) [] end
-        val path = dot_to_colons sname
+        fun after_last_dot s =
+          (case List.rev (String.fields (fn c => c = #".") s) of
+              [] => s
+            | x::_ => x)
       in
-        if List.exists (fn c => (c = #":")) (String.explode path) then "crate::"^path
-        else path
+        after_last_dot sname
       end
 
     (* print statements *)
@@ -947,7 +972,9 @@ fun serialize_ml rust_module rust_version rust_edition
       let
         val (raw_decls, body) = split_list xs;
         val decls = maps these raw_decls
-      in (SOME [str base], print_ml_module base decls body) end;
+        val imports = filter (fn (sym, _) => (sym = base)) module_imports
+          |> (fn [(_, imports)] => imports) 
+      in (SOME [str base], print_ml_module base decls imports body) end;
 
     (* serialization *)
     val ps = Code_Namespace.print_hierarchical {
@@ -959,7 +986,7 @@ fun serialize_ml rust_module rust_version rust_edition
         |> map (fn (SOME [x]) => ["src", (Pretty.string_of x)^ml_extension]), 
       map snd includes @ map snd ps)
     val toml = pair 
-      (["cargo.toml"])
+      (["Cargo.toml"])
       (Pretty.chunks2 ([
           concat [str "[package]\n", 
                 str "name =",(str o print_rust_string) rust_module, str "\n",
