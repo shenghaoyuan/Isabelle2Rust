@@ -1,4 +1,4 @@
-theory lambda
+theory lambda_test
   imports Main "Rust.Rust_Setup"
 begin
 

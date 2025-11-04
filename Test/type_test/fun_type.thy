@@ -1,4 +1,4 @@
-theory fun_ty
+theory fun_type
   imports Main "Rust.Rust_Setup"
 begin
 

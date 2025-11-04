@@ -1,4 +1,4 @@
-theory Tuple
+theory tuple
   imports Main "Rust.Rust_Setup"
 begin
 

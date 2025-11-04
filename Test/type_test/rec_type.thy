@@ -1,4 +1,4 @@
-theory recd
+theory rec_type
   imports Main "Rust.Rust_Setup"
   
 
