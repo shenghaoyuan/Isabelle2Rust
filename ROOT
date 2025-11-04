@@ -30,7 +30,7 @@ session Rust_Test_Quick in "mytest/quick" = Rust +
     "*:**.ocaml"
     "*:**.toml"
 
-session Max_Test in "Test/maxTest" = Rust +
+session Max_Test in "Test/max_test" = Rust +
   description "max test"
   options [timeout = 300]
   theories [document = false, condition = ISABELLE_GOEXE]
@@ -41,7 +41,7 @@ session Max_Test in "Test/maxTest" = Rust +
     "*:**.ocaml"
     "*:**.toml"
 
-session Get_Test in "Test/getTest" = Rust +
+session Get_Test in "Test/get_test" = Rust +
   description "get test"
   options [timeout = 300]
   theories [document = false, condition = ISABELLE_GOEXE]
@@ -52,7 +52,7 @@ session Get_Test in "Test/getTest" = Rust +
     "*:**.ocaml"
     "*:**.toml"
 
-session Generic_Test in "Test/genericTest" = Rust +
+session Generic_Test in "Test/type_test/generic" = Rust +
   description "generic test"
   options [timeout = 300]
   theories [document = false, condition = ISABELLE_GOEXE]

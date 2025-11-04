@@ -1,4 +1,4 @@
-theory letTest
+theory let_test
   imports Main "Rust.Rust_Setup"
 begin
 
