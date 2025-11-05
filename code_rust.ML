@@ -650,16 +650,10 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
 (** print module **)
 
 fun print_ocaml_module name decls imports body =
-  Pretty.block_enclose (
-    str ("mod " ^ 
-      name ^ 
-      " {"),
-    str ("}")
-  )
-  [Pretty.chunks2 (
+  Pretty.chunks2 (
     if List.null imports then body
     else (Pretty.chunks (map (fn i => str ("use crate::"^i^"::*;")) imports) :: body)
-  )];
+  );
 
 val literals_ocaml = let
   fun numeral_ocaml k = if k < 0
@@ -797,7 +791,7 @@ fun serialize_ml rust_module rust_version rust_edition
 
     val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node stmt_list)^"\n")
 
-    val rust_module = if rust_module = "" then "isabelle/exported" else rust_module;
+    val rust_module = if rust_module = "" then "isabelle_exported" else rust_module;
     val rust_version = if rust_version = "" then "0.1.0" else rust_module;
     val rust_edition = if rust_edition = "" then "2024" else rust_module;
 
@@ -944,6 +938,7 @@ fun serialize_ml rust_module rust_version rust_edition
       in
         mod_imports
       end
+      val modules = map fst module_imports
 
     (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
       modify module path format from "A.b" to "a::b"
@@ -994,8 +989,14 @@ fun serialize_ml rust_module rust_version rust_edition
                 str "edition =",(str o print_rust_string) rust_edition],
           str "[dependencies]"
       ]))
+    val main = pair
+      (["src", "main.rs"])
+      (Pretty.chunks([
+        str (fold (fn s => (fn acc => ("mod "^s^";\n")^acc)) modules "" ),
+        str "fn main(){}"
+      ]))
   in
-    (Code_Target.Hierarchy (toml :: srcs), 
+    (Code_Target.Hierarchy (toml :: main :: srcs), 
     try (deresolver []))
   end;
 
