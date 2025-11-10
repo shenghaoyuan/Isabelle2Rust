@@ -5,7 +5,7 @@
 *.cmo
 *.lock
 *.ML~
-*/*/export
-*/export
+**/export
+ROOT
 node_modules/
 package-lock.json

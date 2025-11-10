@@ -5,8 +5,8 @@
 ## Quick start
 
 ```bash
-make code THEORY=Rust_Test_Quick
-# isabelle build -v -e -d . Rust_Test_Quick
+make build TEST_DIR=Test/get_test TEST_THEORY=get
+# isabelle build -v -e -d . Get_Test
 ```
 
 | 选项             | 含义                                                         |
