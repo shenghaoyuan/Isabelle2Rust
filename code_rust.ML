@@ -198,7 +198,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     val deresolve_inst = deresolve o Class_Instance;
     fun box s = "Box<"^s^">"
     fun clone s = s^".clone()"
-    fun box_new s = "Box::new("^s^")" val _ = box_new
+    fun box_new s = "Box::new("^s^")"
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let        
         val isinf = is_inf_typeco (sym, tys)
@@ -341,8 +341,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         fun print_param_list (ref_prcs, nonref_prcs) is_derefs = 
           map (fn is_deref => 
             (case is_deref
-              of (SOME [true]) => (fn t => str (ref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars BR t))))
-              | _ => (fn t => str (nonref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars BR t)))) 
+              of (SOME [true]) => (fn t => str (ref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars NOBR t))))
+              | _ => (fn t => str (nonref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars NOBR t)))) 
             )) is_derefs
       in
         if is_constr sym then
@@ -358,11 +358,11 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 str "("
                 :: (case is_derefs_op 
                   of SOME is_derefs => commas_append (map_each (print_param_list (ref_prcs, nonref_prcs) is_derefs) ts)
-                  | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars BR) ts))   
+                  | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars NOBR) ts))   
                 @ [str ")"]
                 )]
             else 
-              [print_term is_pseudo_fun some_thm vars BR (Code_Thingol.saturated_application wanted app)]
+              [print_term is_pseudo_fun some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
           end
         else if is_pseudo_fun sym
           then (str o deresolve) sym @@ str "()"
@@ -409,7 +409,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               ),
               str "}"
             )
-            [str "(commas_append (map print_select clauses))"]
+            (commas_append (map print_select clauses))
           end;
     fun print_val_decl print_typscheme (sym, typscheme) = concat
       [str "val", str (deresolve sym), str ":", print_typscheme typscheme];
