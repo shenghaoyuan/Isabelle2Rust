@@ -401,11 +401,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           in
             Pretty.block_enclose(
               Pretty.block(
-                [str "match",
-                Pretty.brk 1,
+                [str "match ",
                 print_term is_pseudo_fun some_thm vars NOBR t,
-                Pretty.brk 1,
-                str "{ "]
+                str " {"]
               ),
               str "}"
             )
@@ -827,7 +825,7 @@ fun serialize_ml rust_module rust_version rust_edition
     fun get_node program sym =         
       (Code_Symbol.Graph.get_node program sym) 
       handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing "EXCEPTION" in Code_Thingol.NoStmt end
-    (*log-efficiency dedup*)
+    (* log-efficiency dedup*)
     fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
       ([], L2) => L2
       | (L1, []) => L1
@@ -850,6 +848,21 @@ fun serialize_ml rust_module rust_version rust_edition
         if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
         else x1 :: dedup_sorted eq (x2 :: rest);
     fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
+    (* log-efficiency list minus
+      lminus L1 L2 = L1 \ L2
+    *)
+    fun lminus L1 L2 = 
+      let
+        val l1 = dedup L1 
+        val l2 = dedup L2 
+        fun minus l1 l2 = case (l1, l2)
+          of (x::l1', y::l2') => 
+            if (x = y) then minus l1' l2'
+            else x::(minus l1' (y::l2'))
+          | (l1', []) => l1'
+      in
+        minus l1 l2
+      end;
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
@@ -959,7 +972,7 @@ fun serialize_ml rust_module rust_version rust_edition
       in
         mod_imports
       end
-      val modules = map fst module_imports
+      val raw_modules = map fst module_imports
 
     (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
       modify module path format from "A.b" to "a::b"
@@ -997,10 +1010,14 @@ fun serialize_ml rust_module rust_version rust_edition
         print_module = print_module, print_stmt = print_stmt,
         lift_markup = K I } ml_program;
     val _ = tracing ("\nExported "^(string_of_int (List.length ps))^" Programs: "^wrap_list (map (fn x => case x of NONE => "None" | SOME prts => "Some "^wrap_list (map Pretty.string_of prts)) (map fst ps)))
+    val modules = map fst ps
+      |> map (fn (SOME [x]) => (Pretty.string_of x))
+    val unused_modules = lminus raw_modules modules
+    val _ = tracing("mods="^(wrap_list raw_modules)^"  used="^(wrap_list modules)^"  unused="^(wrap_list unused_modules))
     val srcs = ListPair.zip 
-      (map fst ps
-        |> map (fn (SOME [x]) => ["src", (Pretty.string_of x)^ml_extension]), 
+      (map (fn x => ["src", x^ml_extension]) modules, 
       map snd includes @ map snd ps)
+    val empty_mods = map (fn x => (pair (["src", x^ml_extension]) (str ""))) unused_modules 
     val toml = pair 
       (["Cargo.toml"])
       (Pretty.chunks2 ([
@@ -1013,11 +1030,11 @@ fun serialize_ml rust_module rust_version rust_edition
     val main = pair
       (["src", "main.rs"])
       (Pretty.chunks([
-        str (fold (fn s => (fn acc => ("mod "^s^";\n")^acc)) modules "" ),
+        str (fold (fn s => (fn acc => ("mod "^s^";\n")^acc)) raw_modules "" ),
         str "fn main(){}"
       ]))
   in
-    (Code_Target.Hierarchy (toml :: main :: srcs), 
+    (Code_Target.Hierarchy (toml :: main :: srcs @ empty_mods), 
     try (deresolver []))
   end;
 
