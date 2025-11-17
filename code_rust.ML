@@ -409,7 +409,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             str "("
             :: (case is_derefs_op 
               of SOME is_derefs => commas_append (map_each (print_param_list (I, I) is_derefs) ts)
-              | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars BR) ts))   
+              | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars NOBR) ts))   
             @ [str ")"]
             )]
       end
@@ -421,6 +421,21 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
     and print_case _ _ _ _ { clauses = [], ... } =
           (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
+        (*let bind*)
+      | print_case is_pseudo_fun some_thm vars fxy (case_expr as { clauses = [_], ... }) =
+          let
+            val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
+            fun print_let ((pat, _), t) vars =
+              vars
+              |> print_bind is_pseudo_fun some_thm NOBR pat
+              |>> (fn p => Pretty.block
+                  [str "let ", p, str " = ", print_term is_pseudo_fun some_thm vars NOBR t, str ";"])
+            val (ps, vars') = fold_map print_let binds vars;
+          in
+            Pretty.block_enclose (str "{", str "}")
+            (ps @ [print_term is_pseudo_fun some_thm vars' NOBR body])
+          end     
+        (*match block*)     
       | print_case is_pseudo_fun some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
           let
             val _ = tracing ("print_case CASE="^print_debug_info_iterm (ICase icase));
@@ -575,11 +590,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   in aux (t, []) end
                 val generic_params = dedup (extract_generics ty)
               in
-                Pretty.block(
-                  str "<"
-                  :: enum "," "" "" (map (fn s => str (s^": Clone")) generic_params)
-                  :: [str ">"]
-                )
+                if List.null generic_params then str ""
+                else enum "," "<" ">" (map (fn s => str (s^": Clone")) generic_params)
               end;
             val prolog = (concat o map str) [definer, deresolve_const const];
           in pair
@@ -1031,7 +1043,10 @@ fun serialize_ml rust_module rust_version rust_edition
     val srcs = ListPair.zip 
       (map (fn x => ["src", x^ml_extension]) modules, 
       map snd includes @ map snd ps)
-    val empty_mods = map (fn x => (pair (["src", x^ml_extension]) (str "/*TODO*/"))) unused_modules 
+    val empty_mods = map (fn x => (pair
+        (["src", x^ml_extension])
+        (str "/*Empty module, added to pass compilition*/")))
+      unused_modules 
     val toml = pair 
       (["Cargo.toml"])
       (Pretty.chunks2 ([
