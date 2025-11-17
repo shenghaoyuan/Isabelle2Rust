@@ -171,6 +171,45 @@ fun to_upper_camel_case s =
       | auxx (c :: cs) = Char.toUpper c :: aux cs
   in String.implode (auxx cs) end;
 
+(* log-efficiency dedup*)
+fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
+  ([], L2) => L2
+  | (L1, []) => L1
+  | (x1::rest1, x2::rest2) =>
+  if leq(x1, x2) then x1 :: merge leq (rest1, L2)
+  else x2 :: merge leq (L1, rest2);
+fun mergesort leq (lst : string list) =
+  if (length lst) <= 1 then lst
+  else
+  let 
+    val m = (length lst) div 2
+    val (L1, L2) = (List.take(lst, m), List.drop(lst, m))
+  in
+    merge leq (mergesort leq L1, mergesort leq L2)
+  end;
+fun dedup_sorted eq (lst : string list) = case lst 
+  of [] => []
+  | [x] => [x]
+  | x1 :: x2 :: rest =>
+    if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
+    else x1 :: dedup_sorted eq (x2 :: rest);
+fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
+(* log-efficiency list minus
+  lminus L1 L2 = L1 \ L2
+*)
+fun lminus L1 L2 = 
+  let
+    val l1 = dedup L1 
+    val l2 = dedup L2 
+    fun minus l1 l2 = case (l1, l2)
+      of (x::l1', y::l2') => 
+        if (x = y) then minus l1' l2'
+        else x::(minus l1' (y::l2'))
+      | (l1', []) => l1'
+  in
+    minus l1 l2
+  end;
+
 (** Caml serializer **)
 
 val print_rust_string =
@@ -199,6 +238,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun box s = "Box<"^s^">"
     fun clone s = s^".clone()"
     fun box_new s = "Box::new("^s^")"
+    fun to_upper s = (String.implode (map Char.toUpper (String.explode s)))
     fun print_tyco_expr_gen is_head (sym, tys) = 
       let        
         val isinf = is_inf_typeco (sym, tys)
@@ -207,17 +247,20 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       in
         case tys  
        of [] => str tyconame                                                      
-        | [ty] =>
-          concat [print_typ_gen is_head BR ty, str tyconame]
         | tys =>
-          concat [enum "," "(" ")" (map (print_typ_gen is_head BR) tys), str tyconame]
+          Pretty.block(
+            str tyconame
+            :: str "<"
+            :: enum "," "" "" (map (print_typ_gen is_head BR) tys)
+            :: [str ">"]
+          )
       end
     and print_typ_gen is_head fxy (tyco `%% tys) = (case tyco_syntax tyco
          of NONE => print_tyco_expr_gen is_head (Type_Constructor tyco, tys)
           | SOME (_, print) => print (print_typ_gen is_head) fxy tys)
-      | print_typ_gen _ (*is_head*) _ (*fxy*) (ITyVar v) = str ("'" ^ v);
+      | print_typ_gen _ (*is_head*) _ (*fxy*) (ITyVar v) = 
+        str (to_upper v);
     fun print_tyco_expr (sym, tys) = print_tyco_expr_gen true (sym, tys);
-
     fun print_typ fxy ty = print_typ_gen true fxy ty;
     fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
     fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
@@ -241,20 +284,13 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     val print_dict_args = map_filter (fn (v, sort) => print_dicts (K false) BR
       (map_index (fn (i, _) => Dict ([],
          Dict_Var { var = v, index = i, length = length sort, class = nth sort i, unique = true })) sort));
-    fun print_term_gen is_pseudo_fun (SOME is_derefs) (ref_prcs, nonref_prcs) some_thm vars fxy (IConst const) =
+    fun print_term_gen is_pseudo_fun is_derefs_op (ref_prcs, nonref_prcs) some_thm vars fxy (IConst const) =
           let
             fun print_const (IConst const) =
-              print_app_with_deref is_pseudo_fun (SOME is_derefs) (ref_prcs, nonref_prcs) some_thm vars fxy (const, [])
+              print_app_with_deref is_pseudo_fun is_derefs_op (ref_prcs, nonref_prcs) some_thm vars fxy (const, [])
           in
             print_term_with_cons print_const (IConst const) 
           end
-      | print_term_gen is_pseudo_fun NONE _ some_thm vars fxy (IConst const) =
-          let
-            fun print_const (IConst const) =
-              print_app is_pseudo_fun some_thm vars fxy (const, [])
-          in
-            print_term_with_cons print_const (IConst const) 
-          end          
       | print_term_gen _ _ _ _ _ _ (IVar NONE) =
           str "_"
       | print_term_gen _ is_derefs_op (ref_prcs, nonref_prcs) _ vars _ (IVar (SOME v)) =
@@ -422,7 +458,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               Pretty.block(
                 [
                 str "(",
-                enum " *" "" "" (map (print_typ_gen false (INFX (2, X))) tys), 
+                enum "," "" "" (map (print_typ_gen false (INFX (2, X))) tys), 
                 str")"]
               )
               ];
@@ -530,11 +566,27 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       (commas_append (map (print_eqn false) eqs))]
                     ))
                   end;
+            fun print_generics ty = 
+              let
+                fun extract_generics t =
+                  let
+                    fun aux (ITyVar v, acc) = to_upper v :: acc
+                      | aux (`%% (_, tys), acc) = List.foldl aux acc tys
+                  in aux (t, []) end
+                val generic_params = dedup (extract_generics ty)
+              in
+                Pretty.block(
+                  str "<"
+                  :: enum "," "" "" (map (fn s => str (s^": Clone")) generic_params)
+                  :: [str ">"]
+                )
+              end;
             val prolog = (concat o map str) [definer, deresolve_const const];
           in pair
             (print_val_decl print_typscheme (Constant const, vs_ty))
             (concat (
               prolog
+              :: print_generics ty
               :: print_dict_args vs
               @| print_eqns vs_ty (is_pseudo_fun (Constant const)) eqs
             ))
@@ -825,44 +877,6 @@ fun serialize_ml rust_module rust_version rust_edition
     fun get_node program sym =         
       (Code_Symbol.Graph.get_node program sym) 
       handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing "EXCEPTION" in Code_Thingol.NoStmt end
-    (* log-efficiency dedup*)
-    fun merge leq (L1 : string list, L2 : string list) = case (L1, L2) of
-      ([], L2) => L2
-      | (L1, []) => L1
-      | (x1::rest1, x2::rest2) =>
-       if leq(x1, x2) then x1 :: merge leq (rest1, L2)
-       else x2 :: merge leq (L1, rest2);
-    fun mergesort leq (lst : string list) =
-      if (length lst) <= 1 then lst
-      else
-      let 
-        val m = (length lst) div 2
-        val (L1, L2) = (List.take(lst, m), List.drop(lst, m))
-      in
-        merge leq (mergesort leq L1, mergesort leq L2)
-      end;
-    fun dedup_sorted eq (lst : string list) = case lst 
-      of [] => []
-      | [x] => [x]
-      | x1 :: x2 :: rest =>
-        if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
-        else x1 :: dedup_sorted eq (x2 :: rest);
-    fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
-    (* log-efficiency list minus
-      lminus L1 L2 = L1 \ L2
-    *)
-    fun lminus L1 L2 = 
-      let
-        val l1 = dedup L1 
-        val l2 = dedup L2 
-        fun minus l1 l2 = case (l1, l2)
-          of (x::l1', y::l2') => 
-            if (x = y) then minus l1' l2'
-            else x::(minus l1' (y::l2'))
-          | (l1', []) => l1'
-      in
-        minus l1 l2
-      end;
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
@@ -1017,7 +1031,7 @@ fun serialize_ml rust_module rust_version rust_edition
     val srcs = ListPair.zip 
       (map (fn x => ["src", x^ml_extension]) modules, 
       map snd includes @ map snd ps)
-    val empty_mods = map (fn x => (pair (["src", x^ml_extension]) (str ""))) unused_modules 
+    val empty_mods = map (fn x => (pair (["src", x^ml_extension]) (str "/*TODO*/"))) unused_modules 
     val toml = pair 
       (["Cargo.toml"])
       (Pretty.chunks2 ([

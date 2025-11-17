@@ -27,8 +27,8 @@ code_printing
   constant Not \<rightharpoonup> (Rust) "(!(_))"
 | constant conj \<rightharpoonup> (Rust) infixl 1 "&&"
 | constant disj \<rightharpoonup> (Rust) infixl 0 "||"
-| constant implies \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else true)"
-| constant HOL.If \<rightharpoonup> (Rust) "!if (_)/ {(_)}/ else {(_)}"
+(*| constant implies \<rightharpoonup> (Rust) "!(if (_)/ then (_)/ else true)"
+| constant HOL.If \<rightharpoonup> (Rust) "!if (_)/ {(_)}/ else {(_)}"*)
 
 (*code_printing
   type_class equal \<rightharpoonup> (Rust) "(_ == _)"
