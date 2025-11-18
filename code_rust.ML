@@ -318,8 +318,15 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               print_debug_info_iterm t)          
             val (binds, t') = Code_Thingol.unfold_pat_abs t;
             val (ps, vars') = fold_map (print_bind is_pseudo_fun some_thm BR o fst) binds vars;
+            val typs = map ((print_typ NOBR) o snd) binds;
           in 
-            brackets (str "fun" :: ps @ str "->" @@ print_term is_pseudo_fun some_thm vars' NOBR t') 
+            Pretty.block (str "(|" 
+            :: commas_append
+              (map (fn (p1, p2) => str ((Pretty.string_of p1)^": &"^(Pretty.string_of p2))) 
+              (ListPair.zip (ps, typs))) 
+            @ str "| {" 
+            :: print_term is_pseudo_fun some_thm vars' NOBR t'
+            @@ str "})") 
           end
       | print_term_gen is_pseudo_fun _ _ some_thm vars fxy (t as (ICase case_expr)) =
           let
@@ -537,19 +544,37 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                               deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
                     val _ = tracing (" TY="^print_debug_info_itype ty)
-                    (* extract function type like "fun`%%[A, fun`%%[B, C]]"
-                      to [A, B, C]    
+                    (* extract function type
+                      "fun`%%[A, fun`%%[B, C]]" => [A, B, C] = A -> B ->C
+                      "fun`%%[A, Product_Type.prod`%%[B, C]]" => [A, [B, C]] = A -> B * C
+                      "fun`%%[fun`%%[A, B], fun`%%[C, D]]" => [A->B, C, D] = (A -> B) -> C -> D
+                      "fun`%%[A, fun`%%[fun`%%[B, C], D]]" => [A, B->C, D] = A -> (B -> C) -> D   
                     *)
                     fun extract_typ (_`%%[ty1, ty2]) = 
                       print_typ (INFX (1, X)) ty1
                       :: (case ty2 
-                        of fs as (_`%%[_, _]) => extract_typ fs
+                        of fs as ("fun"`%%[_, _]) => extract_typ fs
                         | _ => [print_typ (INFX (1, X)) ty2])
                       | extract_typ ty = [print_typ (INFX (1, X)) ty]
                     val typs = extract_typ ty
                     val _ = tracing (" extracting"^wrap_list (map Pretty.string_of typs))
                     val param_typs = List.take (typs, (List.length dummy_parms))
                     val ret_typs = List.drop (typs, (List.length dummy_parms))
+                    val ret_typ = (case ret_typs
+                      of [] => str "()"
+                      | [t] => t 
+                      | ts => (*Fn Trait*)
+                        let
+                          val ret = List.last ts 
+                          val params = List.take (ts, ((List.length ts) - 1))
+                        in  
+                          Pretty.block(
+                            str "impl Fn"
+                            :: enum "," "(" ")" (map (fn t => str ("&"^(Pretty.string_of t))) params)
+                            :: str " -> "
+                            :: [ret]
+                          )
+                        end)
                     (* all params are immutable references*)
                     val dummy_parms_with_typs = ListPair.zip (dummy_parms, param_typs)
                       |> map (fn (prt1, prt2) => Pretty.block ([prt1, str ": &", prt2]))
@@ -559,8 +584,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                         (str "("
                         :: Pretty.commas dummy_parms_with_typs)
                         @ str ") -> "
-                        :: Pretty.separate "*" ret_typs
-                        @ [str " {"]
+                        :: ret_typ
+                        :: [str " {"]
                       ),
                       str "}"
                     )
