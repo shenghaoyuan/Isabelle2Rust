@@ -298,19 +298,33 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           of SOME ([SOME [true]]) => str (ref_prcs (lookup_var vars v))
             | _ => str (nonref_prcs (lookup_var vars v)))
       | print_term_gen is_pseudo_fun is_derefs_op (ref_prcs, nonref_prcs) some_thm vars fxy (t as t1 `$ t2)=
-          let 
-            fun print_deco (t as t1 `$ t2)=
+          let                 
+            val _ = tracing ("print_term `$ ITERM="^
+              print_debug_info_iterm t^
+              "\n  app="^
+              (fn (t,ts) => wrap_args [print_debug_info_iterm t, wrap_list (map print_debug_info_iterm ts)])
+              (Code_Thingol.unfold_app t))
+            fun print_app_term (t as (t1 as _ `|=> _) `$ _) =
               let
-                val _ = tracing ("print_term `$ ITERM="^
-                  print_debug_info_iterm t)
+                val params = map (print_term is_pseudo_fun some_thm vars NOBR)
+                  (snd (Code_Thingol.unfold_app t))
+                fun commas_append_and_borrow prts = 
+                  commas_append (map (fn t => str ("&"^(Pretty.string_of t))) prts)
               in
-                (case Code_Thingol.unfold_const_app t
-                of SOME app => print_app_with_deref is_pseudo_fun is_derefs_op (ref_prcs, nonref_prcs) some_thm vars fxy app
-                  | NONE => brackify fxy [print_term is_pseudo_fun some_thm vars NOBR t1,
-                      print_term is_pseudo_fun some_thm vars BR t2])
+                Pretty.block(
+                  print_term is_pseudo_fun some_thm vars NOBR t1
+                  :: str " ("
+                  :: commas_append_and_borrow params
+                  @ [str ")"]
+                )
               end
+              | print_app_term (t as t1 `$ t2) =
+              (case Code_Thingol.unfold_const_app t
+              of SOME app => print_app_with_deref is_pseudo_fun is_derefs_op (ref_prcs, nonref_prcs) some_thm vars fxy app
+                | NONE => brackify fxy [print_term is_pseudo_fun some_thm vars NOBR t1,
+                  print_term is_pseudo_fun some_thm vars BR t2])
           in
-            print_term_with_cons print_deco t
+            print_term_with_cons print_app_term t
           end
       | print_term_gen is_pseudo_fun _ _ some_thm vars _ (t as _ `|=> _) =
           let
@@ -320,13 +334,20 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val (ps, vars') = fold_map (print_bind is_pseudo_fun some_thm BR o fst) binds vars;
             val typs = map ((print_typ NOBR) o snd) binds;
           in 
-            Pretty.block (str "(|" 
-            :: commas_append
-              (map (fn (p1, p2) => str ((Pretty.string_of p1)^": &"^(Pretty.string_of p2))) 
-              (ListPair.zip (ps, typs))) 
-            @ str "| {" 
-            :: print_term is_pseudo_fun some_thm vars' NOBR t'
-            @@ str "})") 
+            Pretty.block_enclose (
+              Pretty.block (
+                str "(|" 
+                :: commas_append
+                (map (fn (p1, p2) => str ((Pretty.string_of p1)^": &"^(Pretty.string_of p2))) 
+                (ListPair.zip (ps, typs))) 
+                @ [str "| {"] 
+              ),
+              str "})"
+            )
+            ((map (fn t => Pretty.block [str "let ", t, str " = ", str (clone (Pretty.string_of t)), str ";"]) 
+                ps)
+              @ [print_term is_pseudo_fun some_thm vars' NOBR t']
+            )
           end
       | print_term_gen is_pseudo_fun _ _ some_thm vars fxy (t as (ICase case_expr)) =
           let
@@ -387,6 +408,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               of (SOME [true]) => (fn t => str (ref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars NOBR t))))
               | _ => (fn t => str (nonref_prcs (Pretty.string_of (print_term is_pseudo_fun some_thm vars NOBR t)))) 
             )) is_derefs
+        fun commas_append_and_borrow prts = 
+          commas_append (map (fn t => str ("&"^(Pretty.string_of t))) prts)
       in
         if is_constr sym then
           let 
@@ -415,8 +438,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           @ [Pretty.block (
             str "("
             :: (case is_derefs_op 
-              of SOME is_derefs => commas_append (map_each (print_param_list (I, I) is_derefs) ts)
-              | NONE => commas_append (map (print_term is_pseudo_fun some_thm vars NOBR) ts))   
+              of SOME is_derefs => commas_append_and_borrow (map_each (print_param_list (I, I) is_derefs) ts)
+              | NONE => commas_append_and_borrow (map (print_term is_pseudo_fun some_thm vars NOBR) ts))   
             @ [str ")"]
             )]
       end
@@ -453,7 +476,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 Pretty.block (
                   p 
                   :: str " => "
-                  :: [(print_term_gen is_pseudo_fun NONE (I, clone) some_thm vars' NOBR body)]
+                  :: [(print_term_gen is_pseudo_fun NONE (I, I) some_thm vars' NOBR body)]
                 )
               end;
           in
@@ -525,7 +548,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   if List.null ts then NONE
                   else SOME (map is_deref ts)
                 val print_pattern_term = (print_term is_pseudo_fun some_thm vars NOBR)
-                val print_expr_term = (print_term_gen is_pseudo_fun is_derefs_op (box_new, clone) some_thm vars NOBR)
+                val print_expr_term = (print_term_gen is_pseudo_fun is_derefs_op (box_new, I) some_thm vars NOBR)
               in 
                 if is_degenerated (*only 1 pattern clause in eqs*)
                 then print_expr_term t 
@@ -589,11 +612,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       ),
                       str "}"
                     )
-                    (case eqs 
+                    ((map (fn t => Pretty.block [str "let ", t, str " = ", str (clone (Pretty.string_of t)), str ";"]) 
+                      dummy_parms)
+                    @
+                    [(case eqs 
                     of [eq] => 
-                    ([print_eqn true eq])
+                    (print_eqn true eq)
                     | _ =>
-                    ( [Pretty.block_enclose (
+                    ( Pretty.block_enclose (
                         Pretty.block (
                           [str "match",
                           Pretty.brk 1,
@@ -603,8 +629,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                         ),
                         str "}"
                       )
-                      (commas_append (map (print_eqn false) eqs))]
-                    ))
+                      (commas_append (map (print_eqn false) eqs))
+                    ))])
                   end;
             fun print_generics ty = 
               let
