@@ -1,0 +1,49 @@
+theory class_test
+  imports
+  Main "Rust.Rust_Setup" "Rust.OML_Setup"
+begin
+
+class inc =
+  fixes inc :: "'a \<Rightarrow> 'a"
+
+instantiation nat :: inc
+begin
+  definition inc_nat where "inc (n::nat) = n + 1"
+  instance ..
+end
+
+fun add1 :: "('a::inc) \<Rightarrow> 'a" where
+  "add1 x = inc x"
+
+(*
+pub trait Inc {
+    fn inc(&self) -> Self;
+}
+
+impl Inc for u64 {
+    fn inc(&self) -> Self { self + 1 }
+}
+
+pub fn add1<T: Inc>(x: &T) -> T {
+    x.inc()
+}
+
+*)
+
+export_code add1 in OCaml 
+export_code add1 in Rust    
+
+
+fun own:: "int \<Rightarrow> int" where
+" 
+own x = 
+  (let y = 1 in 
+    let z = y + 1 in
+      y = z;
+      z
+  )
+"
+
+
+
+end
