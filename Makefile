@@ -19,6 +19,9 @@ build:
 	@echo "Building Isabelle session with theory: $(TEST_THEORY)"
 	@$(ISABELLE_BUILD)
 
+code:
+	@$(ISABELLE_BUILD)
+
 clean :
 	@echo $@
 	find . -name "*\.thy~" -exec rm {} \;
