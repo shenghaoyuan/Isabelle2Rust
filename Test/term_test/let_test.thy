@@ -8,6 +8,17 @@ definition test_let :: "nat \<Rightarrow> nat" where
      in x * 2
    )"
 
+fun own:: "int \<Rightarrow> int" where
+" 
+own x = 
+  (let y = 1 in 
+    let z = y + 1 in
+     let y = z + 1 in
+      z
+  )
+"
+
+
 
 export_code test_let in OCaml   
 export_code test_let in Rust

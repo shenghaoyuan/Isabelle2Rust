@@ -14,14 +14,14 @@ definition test1 :: "int \<Rightarrow> int" where
 export_code test1 in OCaml
 export_code test1 in Rust
 
-definition test2 :: "int" where
+(*definition test2 :: "int" where
   "test2 = add 3 4"
 
 
 fun add3 :: "int \<Rightarrow> int \<Rightarrow> int \<Rightarrow> int" where
   "add3 x y z = (add x y) + z"
 
-definition test3 :: "int" where
-  "test3 = add3 3 4 5"
+definition test3' :: "int" where
+  "test3' = add3 3 4 5"*)
 
 end
