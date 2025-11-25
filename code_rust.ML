@@ -252,7 +252,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun box_new s = "Box::new("^s^")"
     fun to_upper s = (String.implode (map Char.toUpper (String.explode s)))
     fun print_tyco_expr_gen tyco_op is_head (sym, tys) = 
-      let        
+      let
+        val _ = tracing ("print_tyco_expr_gen"^
+          wrap_args [print_debug_info_sym sym, wrap_list (map print_debug_info_itype tys)])       
         val isinf = (case tyco_op 
           of NONE => false
           | (SOME co) => is_inf_typeco co sym)
@@ -385,7 +387,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         (* look up the enum type that iterm t belongs to
           for iterm t as (Iconst c) or ((Iconst c) `$ t2)
         *)
-        val _ = tracing ("print_term_with_cons_and_box "^(print_debug_info_iterm t))
+        val _ = tracing ("print_term_with_cons_and_box "^(print_debug_info_iterm t)^
+          "\n need_box="^(Bool.toString need_box)^
+          "\n box_prcs="^(box_prcs "something"))
         fun lookup_typeco t = 
           (case t of 
             (IConst (const as {sym as (Constant c), ...}))
@@ -433,6 +437,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           let 
             val wanted = length dom
             val need_box_list = is_invdependent_typecos const
+            val _ = tracing (" need_box_list="^wrap_list (map Bool.toString need_box_list))
           in
             if wanted = 0
             then [(str o deresolve) sym]
@@ -486,7 +491,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val (ps, vars') = fold_map print_let binds vars;
           in
             Pretty.block_enclose (str "{", str "}")
-            (ps @ [print_term is_pseudo_fun some_thm vars' NOBR body])
+            (ps @ [print_term_gen is_pseudo_fun (NONE, false, box_new) some_thm vars' NOBR body])
           end     
         (*match block*)     
       | print_case is_pseudo_fun some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
@@ -495,11 +500,25 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             fun print_select (pat, body) =
               let
                 val (p, vars') = print_bind is_pseudo_fun some_thm NOBR pat vars;
+                fun add_boxed_list t boxed_list = 
+                  (case t 
+                  of ((IConst (const as {sym as (Constant c), ...})) `$ _) => 
+                    (let 
+                      val (_, ts) = Code_Thingol.unfold_app t
+                      val boxed_l = is_invdependent_typecos const
+                      fun add (t::ts) (b::boxed_l') boxed_list = (pair t b)::boxed_list
+                      | add [] [] boxed_list = boxed_list
+                    in
+                      add ts boxed_l boxed_list
+                    end)
+                  | _ => boxed_list)
+                val boxed_list_op = 
+                  SOME (add_boxed_list pat [])
               in 
                 Pretty.block (
                   p 
                   :: str " => "
-                  :: [(print_term is_pseudo_fun some_thm vars' NOBR body)]
+                  :: [(print_term_gen is_pseudo_fun (boxed_list_op, false, box_new) some_thm vars' NOBR body)]
                 )
               end;
           in
@@ -598,9 +617,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 val boxed_list_op = 
                   if List.null ts then NONE
                   else SOME (fold add_boxed_list ts [])
-                val need_box = false
                 val print_pattern_term = (print_term is_pseudo_fun some_thm vars NOBR)
-                val print_expr_term = (print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_new) some_thm vars NOBR)
+                val print_expr_term = (print_term_gen is_pseudo_fun (boxed_list_op, false, box_new) some_thm vars NOBR)
               in 
                 if is_degenerated (*only 1 pattern clause in eqs*)
                 then print_expr_term t 
@@ -970,7 +988,7 @@ fun serialize_ml rust_module rust_version rust_edition
     (* safe get_node, handle UNDEF exception*)
     fun get_node program sym =         
       (Code_Symbol.Graph.get_node program sym) 
-      handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing "EXCEPTION" in Code_Thingol.NoStmt end
+      handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing ("EXCEPTION: UNDEF sym "^(print_debug_info_sym sym)) in Code_Thingol.NoStmt end
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
