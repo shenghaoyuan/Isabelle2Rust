@@ -9,10 +9,12 @@ class add1 =
 class add2 =
   fixes add2 :: "'a \<Rightarrow> 'a"
 
-fun add12 :: "('a::add1 add2) \<Rightarrow> 'a" where
+class add1_add2 = add1 + add2
+
+fun add12 :: "('a::add1_add2) \<Rightarrow> 'a" where
   "add12 x = add2 (add1 x)"
 
-export_code add12 in Rust 
+export_code add12 in OCaml
 export_code add12 in Rust    
 
                     
