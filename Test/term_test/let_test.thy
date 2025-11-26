@@ -20,7 +20,7 @@ own x =
 
 
 
-export_code test_let in OCaml   
-export_code test_let in Rust
+export_code test_let own in OCaml   
+export_code test_let own in Rust
 
 end

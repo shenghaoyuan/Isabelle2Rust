@@ -258,18 +258,20 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         val isinf = (case tyco_op 
           of NONE => false
           | (SOME co) => is_inf_typeco co sym)
-        val tyconame = if (isinf andalso (not is_head)) then box (deresolve sym)
-          else deresolve sym
+        val tyconame = deresolve sym
       in
-        case tys  
-       of [] => str tyconame                                                      
+        (if (isinf andalso (not is_head)) 
+        then (fn prt => str (box (Pretty.string_of prt))) 
+        else I)
+        (case tys  
+        of [] => str tyconame                                                      
         | tys =>
           Pretty.block(
             str tyconame
             :: str "<"
             :: enum "," "" "" (map (print_typ_gen NONE true BR) tys)
             :: [str ">"]
-          )
+          ))
       end
     and print_typ_gen tyco_op is_head fxy (tyco `%% tys) = (case tyco_syntax tyco
          of NONE => print_tyco_expr_gen tyco_op is_head (Type_Constructor tyco, tys)
@@ -385,16 +387,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     and print_term_with_cons_and_box (need_box, box_prcs) print_term t = 
       let
         (* look up the enum type that iterm t belongs to
-          for iterm t as (Iconst c) or ((Iconst c) `$ t2)
+          for iterm t as ((((Iconst c) `$ t1') `$ t2') `$ ... tn')
         *)
         val _ = tracing ("print_term_with_cons_and_box "^(print_debug_info_iterm t)^
           "\n need_box="^(Bool.toString need_box)^
           "\n box_prcs="^(box_prcs "something"))
         fun lookup_typeco t = 
-          (case t of 
-            (IConst (const as {sym as (Constant c), ...}))
-              => lookup_constant_typeco sym
-            | ((IConst (const as {sym as (Constant c), ...})) `$ _)
+          (case (Code_Thingol.unfold_const_app t) 
+            of (SOME ((const as {sym as (Constant c), ...}), _))
               => lookup_constant_typeco sym
             | _ => NONE)
         fun print_cons (SOME s) =
@@ -1003,7 +1003,7 @@ fun serialize_ml rust_module rust_version rust_edition
           |> map dest_itype
           |> List.concat
           |> dedup
-          | dest_types x = [] (*raise Fail ("dest_types: "^ print_debug_info_thingol_stmt x)*)
+          | dest_types _ = [] (*raise Fail ("dest_types: "^ print_debug_info_thingol_stmt x)*)
         val drct_dpdncs = dest_types (get_node program sym)
         val snd_dpdncs = drct_dpdncs@dpdncs 
           |> map (fn t => (Type_Constructor t)) 
@@ -1023,8 +1023,8 @@ fun serialize_ml rust_module rust_version rust_edition
       let
         val dpdncs = lookup_dependent_types program sym
         val res = List.exists (fn s => s = co) dpdncs
-        val _ = tracing ("is_inftype TYPECO="^co^" DEPENDCENIES="^ (wrap_list dpdncs)
-        ^"\n RES="^Bool.toString res)
+        val _ = tracing ("is_inftype TYPECO="^co^"\n SYM="^(print_debug_info_sym sym)^
+        "\n DEPENDCENIES="^ (wrap_list dpdncs)^"\n RES="^Bool.toString res)
       in
         List.exists (fn s => s = co) dpdncs
       end;
@@ -1037,13 +1037,14 @@ fun serialize_ml rust_module rust_version rust_edition
           |> map dest_itype
           |> map (fn x => Type_Constructor x)
         val dom_dpdncs = map (lookup_dependent_types program) dom_typs
-        val _ = tracing ("is_invdependent_typecos TYPECO="^t^
+        val _ = tracing ("is_invdependent_typecos SYM="^(print_debug_info_sym sym)^
           "\n DOM="^(wrap_list (map dest_itype dom))^"\n DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs)))
       in
         map (List.exists (fn s => s = dttypcon)) dom_dpdncs
     end;
     fun lookup_constant_typeco_gen program sym = 
       let
+        val _ = tracing ("lookup_constant_typeco_gen SYM="^(print_debug_info_sym sym))
         val stmt = get_node program sym
       in
         (case stmt 
