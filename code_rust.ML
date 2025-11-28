@@ -281,7 +281,32 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         str (to_upper v);
     fun print_tyco_expr (sym, tys) = print_tyco_expr_gen NONE true (sym, tys);
     fun print_typ fxy ty = print_typ_gen NONE true fxy ty;
-    fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, [ty]);
+    fun print_dicttyp (class, ty) = print_tyco_expr (Type_Class class, []); (*omit generic param Self*)
+    fun print_trait_typ fxy ty generic_ty =
+      let
+        val self_ty_s = (fn ITyVar v => to_upper v) generic_ty
+        val ts = extract_typ print_typ ty
+          |> map (fn p => (if (Pretty.string_of p) = self_ty_s then str "Self" else p))
+        val param_num = (List.length ts) - 1
+        val ret_typ = List.last ts 
+        val param_typs = List.take (ts, param_num)
+        fun print_dummy_params param_num = 
+          let fun aux param_num index param_l =
+            if index < param_num 
+            then "x"^(Int.toString index)::(aux param_num (index+1) param_l)
+            else param_l
+          in aux param_num 0 [] end
+        val params = map (fn (s, p) => Pretty.block[str (s^": "), p])
+          (ListPair.zip ((print_dummy_params param_num), param_typs))
+      in  
+        Pretty.block(
+          str "fn"
+          :: enum "," "(" ")" params
+          :: str " -> "
+          :: ret_typ
+          :: [str ";"]
+        )
+      end;
     fun print_typscheme_prefix (vs, p) = enum " ->" "" ""
       (map_filter (fn (v, sort) =>
         (print_product (fn class => print_dicttyp (class, ITyVar v)) sort)) vs @| p);
@@ -801,37 +826,28 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           end
      | print_stmt export (ML_Class (class, (v, (classrels, classparams)))) =
           let
-            fun print_field s p = concat [str s, str ":", p];
-            fun print_super_class_field (classrel as (_, super_class)) =
-              print_field (deresolve_classrel classrel) (print_dicttyp (super_class, ITyVar v));
-            fun print_classparam_decl (classparam, ty) =
-              print_val_decl print_typscheme
-                (Constant classparam, ([(v, [class])], ty));
-            fun print_classparam_field (classparam, ty) =
-              print_field (deresolve_const classparam) (print_typ NOBR ty);
-            val w = "_" ^ Name.enforce_case true v;
-            fun print_classparam_proj (classparam, _) =
-              (concat o map str) ["let", deresolve_const classparam, w, "=",
-                w ^ "." ^ deresolve_const classparam ^ ";;"];
-            val type_decl_p = concat [
-                str "type",
-                print_dicttyp (class, ITyVar v),
-                str "=",
-                enum_default "unit" ";" "{" "}" (
-                  map print_super_class_field classrels
-                  @ map print_classparam_field classparams
-                )
-              ];
+            fun print_super_traits classrels =
+              if (List.length classrels) = 0 then str ""
+              else enum " + " "" "+" (map str (map snd classrels))
+            fun print_trait_method (_, ty) = 
+              print_trait_typ NOBR ty (ITyVar v) 
+            val trait_decl_p = 
+              Pretty.block_enclose(
+                Pretty.block(
+                  str "pub trait "
+                  :: print_dicttyp (class, ITyVar v)
+                  :: print_super_traits classrels
+                  :: [str " {"]),
+                str "}"
+              )
+              (map print_trait_method classparams)
           in pair
            (if Code_Namespace.is_public export
-              then type_decl_p :: map print_classparam_decl classparams
+              then [trait_decl_p]
               else if null classrels andalso null classparams
-              then [type_decl_p] (*work around weakness in export calculation*)
+              then [trait_decl_p] (*work around weakness in export calculation*)
               else [concat [str "type", print_dicttyp (class, ITyVar v)]])
-            (Pretty.chunks (
-              type_decl_p
-              :: map print_classparam_proj classparams
-            ))
+          (trait_decl_p)
           end;
   in print_stmt end;
 
@@ -1177,7 +1193,7 @@ val serializer_ocaml : Code_Target.serializer =
 (* print fn closure trait
     ((fixity -> itype -> Pretty.T)
     -> fixity -> itype list -> Pretty.T)*)
-fun fn_trait_syntax print_typ fxy [ty1, ty2] =
+fun fn_trait_impl_syntax print_typ fxy [ty1, ty2] =
   let
     val ts = extract_typ print_typ ("fun"`%%[ty1, ty2])
     val ret = List.last ts 
@@ -1202,7 +1218,7 @@ val _ = Theory.setup
           "\"$ISABELLE_OCAMLFIND\" ocamlopt -w -p-u -package zarith -linkpkg ROOT.ml </dev/null"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
-    [(target, SOME (2, fn_trait_syntax))]))
+    [(target, SOME (2, fn_trait_impl_syntax))]))
   #> fold (Code_Target.add_reserved target) [
     "Self", "abstract", "alignof", "and", "any", "as", "assert", "become", 
     "begin", "box", "break","case", "chan", "class", "const", "constraint", 
