@@ -250,6 +250,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun box s = "Box<"^s^">"
     fun clone s = s^".clone()"
     fun box_new s = "Box::new("^s^")"
+    fun deref s = "*("^s^")"
     fun to_upper s = (String.implode (map Char.toUpper (String.explode s)))
     fun print_tyco_expr_gen tyco_op is_head (sym, tys) = 
       let
@@ -302,25 +303,25 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     val print_dict_args = map_filter (fn (v, sort) => print_dicts (K false) BR
       (map_index (fn (i, _) => Dict ([],
          Dict_Var { var = v, index = i, length = length sort, class = nth sort i, unique = true })) sort));
-    fun print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs) some_thm vars fxy (IConst const) =
+    fun print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy (IConst const) =
           let
             fun print_const (IConst const) =
-              print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs) some_thm vars fxy (const, [])
+              print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs) some_thm vars fxy (const, [])
           in
             print_term_with_cons_and_box (need_box, box_prcs) print_const (IConst const) 
           end
       | print_term_gen _ _ _ _ _ (IVar NONE) =
           str "_"
-      | print_term_gen _ (boxed_list_op, need_box, box_prcs) _ vars _ (t as (IVar (SOME v))) =
+      | print_term_gen _ (boxed_list_op, need_box, box_prcs, clone_prcs) _ vars _ (t as (IVar (SOME v))) =
           if need_box 
           then (case boxed_list_op 
             of SOME boxed_list => (
-              if List.exists (fn (t', is_boxed) => ((t' = t) andalso is_boxed)) boxed_list
-              then str (lookup_var vars v)
-              else str (box_prcs (lookup_var vars v)))
-            | _ => str (box_prcs (lookup_var vars v)))
-          else str (lookup_var vars v)
-      | print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs) some_thm vars fxy (t as t1 `$ t2)=
+              if List.exists (fn t' => (t' = t)) boxed_list
+              then str (clone_prcs (lookup_var vars v))
+              else str (box_prcs (clone_prcs (lookup_var vars v))))
+            | _ => str (box_prcs (clone_prcs (lookup_var vars v))))
+          else str (clone_prcs (lookup_var vars v))
+      | print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy (t as t1 `$ t2)=
           let                 
             val _ = tracing ("print_term `$ ITERM="^
               print_debug_info_iterm t^
@@ -330,18 +331,18 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             fun print_app_term (t as t1 `$ t2) =
               (case Code_Thingol.unfold_const_app t
               of SOME app => (*function or typeco*)
-                print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs) some_thm vars fxy app
+                print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs) some_thm vars fxy app
               | NONE => (*closure*)
                 let
                   val params = map (print_term is_pseudo_fun some_thm vars NOBR)
                     (snd (Code_Thingol.unfold_app t))
-                  fun commas_append_and_borrow prts = 
-                    commas_append (map (fn t => str ("&"^(Pretty.string_of t))) prts)
+                  fun commas_append_and_clone prts = 
+                    commas_append (map (fn t => str (clone(Pretty.string_of t))) prts)
                 in
                   Pretty.block(
                     print_term is_pseudo_fun some_thm vars NOBR t1
                     :: str " ("
-                    :: commas_append_and_borrow params
+                    :: commas_append_and_clone params
                     @ [str ")"]
                   )
                 end)
@@ -360,16 +361,13 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               Pretty.block (
                 str "(move |" 
                 :: commas_append
-                (map (fn (p1, p2) => str ((Pretty.string_of p1)^": &"^(Pretty.string_of p2))) 
+                (map (fn (p1, p2) => str ((Pretty.string_of p1)^": "^(Pretty.string_of p2))) 
                 (ListPair.zip (ps, typs))) 
                 @ [str "| {"] 
               ),
               str "})"
             )
-            ((map (fn t => Pretty.block [str "let ", t, str " = ", str (clone (Pretty.string_of t)), str ";"]) 
-                ps)
-              @ [print_term is_pseudo_fun some_thm vars' NOBR t']
-            )
+            ([print_term_gen is_pseudo_fun (NONE, false, I, clone) some_thm vars' NOBR t'])
           end
       | print_term_gen is_pseudo_fun _ some_thm vars fxy (t as (ICase case_expr)) =
           let
@@ -383,7 +381,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   else print_app is_pseudo_fun some_thm vars fxy app
               | NONE => print_case is_pseudo_fun some_thm vars fxy case_expr)
           end
-    and print_term is_pseudo_fun some_thm vars fxy t = print_term_gen is_pseudo_fun (NONE, false, I) some_thm vars fxy t
+    and print_term is_pseudo_fun some_thm vars fxy t = print_term_gen is_pseudo_fun (NONE, false, I, I) some_thm vars fxy t
     and print_term_with_cons_and_box (need_box, box_prcs) print_term t = 
       let
         (* look up the enum type that iterm t belongs to
@@ -419,7 +417,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       in
         str term_with_box
       end
-    and print_app_expr is_pseudo_fun (boxed_list_op, box_prcs)
+    and print_app_expr is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs)
        some_thm vars (app as ((const as { sym, dicts, dom, ... }), ts)) =
       let 
         val _ = tracing ("print_app_expr CONST="^
@@ -429,9 +427,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           "\n boxed_list_op="^(case boxed_list_op 
             of NONE => "NONE"
             | SOME boxed_list => 
-              "SOME"^(wrap_list (map (fn (t, is_boxed) => wrap_args [print_debug_info_iterm t, Bool.toString is_boxed]) boxed_list))))
-        fun commas_append_and_borrow prts = 
-          commas_append (map (fn t => str ("&"^(Pretty.string_of t))) prts)
+              "SOME"^(wrap_list (map print_debug_info_iterm boxed_list))))
       in
         if is_constr sym then
           let 
@@ -449,7 +445,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 :: (commas_append 
                     (map 
                     (fn (t, need_box) => 
-                      (print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs) some_thm vars NOBR t)) 
+                      (print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars NOBR t)) 
                     (ListPair.zip (ts, need_box_list))))
                 @ [str ")"]
                 )]
@@ -459,22 +455,32 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         else if is_pseudo_fun sym
           then (str o deresolve) sym @@ str "()"
         else
-          (str o deresolve) sym 
-          :: map_filter (print_dicts is_pseudo_fun BR) dicts
-          @ [Pretty.block (
-            str "("
-              :: (commas_append_and_borrow 
-                  (map 
-                  (print_term_gen is_pseudo_fun (boxed_list_op, false, box_prcs) some_thm vars NOBR) 
-                  ts))
-            @ [str ")"]
-            )]
+          let 
+            val boxed_list = case boxed_list_op 
+              of NONE => []
+              | SOME boxed_list => boxed_list
+            fun print_deref print_term t = 
+              if List.exists (fn t' => (t' = t)) boxed_list 
+              then str (deref (Pretty.string_of (print_term t)))
+              else print_term t
+          in
+            (str o deresolve) sym 
+            :: map_filter (print_dicts is_pseudo_fun BR) dicts
+            @ [Pretty.block (
+              str "("
+                :: (commas_append
+                    (map 
+                    (print_deref (print_term_gen is_pseudo_fun (boxed_list_op, false, box_prcs, clone_prcs) some_thm vars NOBR)) 
+                    ts))
+              @ [str ")"]
+              )]
+          end
       end
     and print_app is_pseudo_fun some_thm vars = 
-      gen_print_app (print_app_expr is_pseudo_fun (NONE, I))
+      gen_print_app (print_app_expr is_pseudo_fun (NONE, I, I))
       (print_term is_pseudo_fun) const_syntax some_thm vars
-    and print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs) some_thm vars =
-      gen_print_app (print_app_expr is_pseudo_fun (boxed_list_op, box_prcs))
+    and print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs) some_thm vars =
+      gen_print_app (print_app_expr is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs))
       (print_term is_pseudo_fun) const_syntax some_thm vars
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
     and print_case _ _ _ _ { clauses = [], ... } =
@@ -491,7 +497,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val (ps, vars') = fold_map print_let binds vars;
           in
             Pretty.block_enclose (str "{", str "}")
-            (ps @ [print_term_gen is_pseudo_fun (NONE, false, box_new) some_thm vars' NOBR body])
+            (ps @ [print_term_gen is_pseudo_fun (NONE, false, box_new, clone) some_thm vars' NOBR body])
           end     
         (*match block*)     
       | print_case is_pseudo_fun some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
@@ -506,7 +512,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                     (let 
                       val (_, ts) = Code_Thingol.unfold_app t
                       val boxed_l = is_invdependent_typecos const
-                      fun add (t::ts) (b::boxed_l') boxed_list = (pair t b)::boxed_list
+                      fun add (t::ts) (b::boxed_l') boxed_list = 
+                        if b then t::boxed_list else boxed_list
                       | add [] [] boxed_list = boxed_list
                     in
                       add ts boxed_l boxed_list
@@ -518,7 +525,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 Pretty.block (
                   p 
                   :: str " => "
-                  :: [(print_term_gen is_pseudo_fun (boxed_list_op, false, box_new) some_thm vars' NOBR body)]
+                  :: [(print_term_gen is_pseudo_fun (boxed_list_op, false, box_new, clone) some_thm vars' NOBR body)]
                 )
               end;
           in
@@ -608,7 +615,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                     (let 
                       val (_, ts) = Code_Thingol.unfold_app t
                       val boxed_l = is_invdependent_typecos const
-                      fun add (t::ts) (b::boxed_l') boxed_list = (pair t b)::boxed_list
+                      fun add (t::ts) (b::boxed_l') boxed_list = 
+                        if b then t::boxed_list else boxed_list
                       | add [] [] boxed_list = boxed_list
                     in
                       add ts boxed_l boxed_list
@@ -618,7 +626,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   if List.null ts then NONE
                   else SOME (fold add_boxed_list ts [])
                 val print_pattern_term = (print_term is_pseudo_fun some_thm vars NOBR)
-                val print_expr_term = (print_term_gen is_pseudo_fun (boxed_list_op, false, box_new) some_thm vars NOBR)
+                val print_expr_term = (print_term_gen is_pseudo_fun (boxed_list_op, false, box_new, clone) some_thm vars NOBR)
               in 
                 if is_degenerated (*only 1 pattern clause in eqs*)
                 then print_expr_term t 
@@ -651,14 +659,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                         in  
                           Pretty.block(
                             str "impl Fn"
-                            :: enum "," "(" ")" (map (fn t => str ("&"^(Pretty.string_of t))) params)
+                            :: enum "," "(" ")" params
                             :: str " -> "
                             :: [ret]
                           )
                         end)
                     (* all params are immutable references*)
                     val dummy_parms_with_typs = ListPair.zip (dummy_parms, param_typs)
-                      |> map (fn (prt1, prt2) => Pretty.block ([prt1, str ": &", prt2]))
+                      |> map (fn (prt1, prt2) => Pretty.block ([prt1, str ": ", prt2]))
                     val (_, traits) = print_generics_and_traits ty NONE
                   in
                     Pretty.block_enclose(
@@ -673,10 +681,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       ),
                       str "}"
                     )
-                    ((map (fn t => Pretty.block [str "let ", t, str " = ", str (clone (Pretty.string_of t)), str ";"]) 
-                      dummy_parms)
-                    @
-                    [(case eqs 
+                    ([(case eqs 
                     of [eq] => 
                     (print_eqn true eq)
                     | _ =>
@@ -1180,7 +1185,7 @@ fun fn_trait_syntax print_typ fxy [ty1, ty2] =
   in  
     Pretty.block(
       str "(impl Fn"
-      :: enum "," "(" ")" (map (fn t => str ("&"^(Pretty.string_of t))) params)
+      :: enum "," "(" ")" params
       :: str " -> "
       :: ret
       :: [str ")"]
