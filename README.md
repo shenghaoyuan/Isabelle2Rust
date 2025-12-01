@@ -5,8 +5,13 @@
 ## Quick start
 
 ```bash
-make build TEST_DIR=Test/get_test TEST_THEORY=get
+make build TEST_THEORY=get TEST_DIR=Test/get_test 
 # isabelle build -v -e -d . Get_Test
+make run TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out
+
+make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test
+
+
 ```
 
 | 选项             | 含义                                                         |

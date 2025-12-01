@@ -19,6 +19,7 @@ open:
 build:
 	@if [ -z "$(TEST_DIR)" ] || [ -z "$(TEST_THEORY)" ]; then \
 	  echo "Usage: make build TEST_DIR=<dir> TEST_THEORY=<thy>"; \
+	  echo "Example: make build TEST_DIR=tests_targeted TEST_THEORY=Max_Test"; \
 	  exit 1; \
 	fi
 	@echo ">> ROOT for $(TEST_DIR)/$(TEST_THEORY).thy"
@@ -44,13 +45,14 @@ build_silent:
 code:
 	@$(ISABELLE_BUILD_VERBOSE)
 
-# run all Cargo projects under RUST_OUT/TEST_THEORY/export*/
+# run all Cargo projects under TEST_DIR/Rust_Out/TEST_THEORY/export*/
 run:
-	@if [ -z "$(TEST_THEORY)" ] || [ -z "$(RUST_OUT)" ]; then \
-	  echo "Usage: make run TEST_THEORY=<thy> RUST_OUT=<dir>"; \
+	@if [ -z "$(TEST_DIR)" ] || [ -z "$(TEST_THEORY)" ]; then \
+	  echo "Usage: make run TEST_DIR=<dir> TEST_THEORY=<thy>"; \
+	  echo "Example: make run TEST_DIR=tests_targeted TEST_THEORY=Max_Test"; \
 	  exit 1; \
 	fi
-	@OUT_DIR="$(RUST_OUT)/$(TEST_THEORY)"; \
+	@OUT_DIR="$(TEST_DIR)/Rust_Out/$(TEST_THEORY)"; \
 	if [ ! -d "$$OUT_DIR" ]; then \
 	  echo "No such output dir: $$OUT_DIR"; \
 	  exit 1; \
@@ -70,6 +72,7 @@ run:
 test:
 	@if [ -z "$(TEST_DIR)" ] || [ -z "$(TEST_THEORY)" ]; then \
 	  echo "Usage: make test TEST_DIR=<dir> TEST_THEORY=<thy>"; \
+	  echo "Example: make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test"; \
 	  exit 1; \
 	fi
 	@$(MAKE) build TEST_DIR="$(TEST_DIR)" TEST_THEORY="$(TEST_THEORY)"
@@ -109,10 +112,24 @@ clean:
 	rm -rf tests_targeted/Rust_Out
 
 help:
-	@echo "Targets:"
-	@echo "  open                       # open Rust_Setup.thy"
-	@echo "  build  TEST_DIR=... TEST_THEORY=...   # verbose build one test"
-	@echo "  test   TEST_DIR=... TEST_THEORY=...   # build + run"
-	@echo "  targeted                   # run all *_Test.thy under tests_targeted"
-	@echo "  run    TEST_THEORY=... RUST_OUT=...   # run exported Cargo projects"
-	@echo "  clean                      # remove temp files and Rust_Out"
+	@echo "Available targets:"
+	@echo "  open"
+	@echo "      Open $(DEFAULT_FILE) in Isabelle/jEdit."
+	@echo "  build TEST_DIR=<dir> TEST_THEORY=<thy-name>"
+	@echo "      Generate ROOT from ROOT.template and run isabelle build (verbose)."
+	@echo "      Example: make build TEST_DIR=tests_targeted TEST_THEORY=Max_Test"
+	@echo "  build_silent TEST_DIR=<dir> TEST_THEORY=<thy-name>"
+	@echo "      Same as build, but without -v (used internally by 'targeted')."
+	@echo "  code"
+	@echo "      Run isabelle build using the existing ROOT file."
+	@echo "  run TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"
+	@echo "      Run all Cargo projects under RUST_OUT/TEST_THEORY/export*/."
+	@echo "      Example: make run TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out"
+	@echo "  test TEST_DIR=<dir> TEST_THEORY=<thy-name>"
+	@echo "      Build Isabelle session (with -v) and then run all exported Cargo projects."
+	@echo "      Example: make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test"
+	@echo "  targeted"
+	@echo "      Run all *_Test.thy under tests_targeted with quiet Isabelle build."
+	@echo "      Example: make targeted"
+	@echo "  clean"
+	@echo "      Remove temporary and build artefacts, including tests_targeted/Rust_Out."
