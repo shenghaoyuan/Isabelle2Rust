@@ -6,6 +6,7 @@
 *.lock
 *.ML~
 **/export
+**/Rust_Out
 ROOT
 node_modules/
 package-lock.json

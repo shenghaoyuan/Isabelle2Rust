@@ -9,7 +9,7 @@ session Test in "@TEST_DIR@" = Rust +
   options [timeout = 300]
   theories [document = false, condition = ISABELLE_GOEXE]
     "@TEST_THEORY@"
-  export_files
+  export_files (in "Rust_Out/@TEST_THEORY@") [2]
     "*:**.rs"
     "*:**.ML"
     "*:**.ocaml"
