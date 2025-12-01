@@ -398,7 +398,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             )
             ([print_term_gen is_pseudo_fun (NONE, false, I, clone) some_thm vars' NOBR t'])
           end
-      | print_term_gen is_pseudo_fun _ some_thm vars fxy (t as (ICase case_expr)) =
+      | print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy (t as (ICase case_expr)) =
           let
             val _ = tracing ("print_term Icase ITERM="^
               print_debug_info_iterm t)
@@ -406,9 +406,9 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             (case Code_Thingol.unfold_const_app (#primitive case_expr)
             of SOME (app as ({ sym = Constant const, ... }, _)) =>
                   if is_none (const_syntax const)
-                  then print_case is_pseudo_fun some_thm vars fxy case_expr
-                  else print_app is_pseudo_fun some_thm vars fxy app
-              | NONE => print_case is_pseudo_fun some_thm vars fxy case_expr)
+                  then print_case is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr
+                  else print_app_with_deref is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs) some_thm vars fxy app
+              | NONE => print_case is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr)
           end
     and print_term is_pseudo_fun some_thm vars fxy t = print_term_gen is_pseudo_fun (NONE, false, I, I) some_thm vars fxy t
     and print_term_with_cons_and_box (need_box, box_prcs) print_term t = 
@@ -562,24 +562,25 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       gen_print_app (print_app_expr is_pseudo_fun (boxed_list_op, box_prcs, clone_prcs))
       (print_term is_pseudo_fun) const_syntax some_thm vars
     and print_bind is_pseudo_fun = gen_print_bind (print_term is_pseudo_fun)
-    and print_case _ _ _ _ { clauses = [], ... } =
+    and print_case _ _ _ _ _ { clauses = [], ... } =
           (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
         (*let bind*)
-      | print_case is_pseudo_fun some_thm vars fxy (case_expr as { clauses = [_], ... }) =
+      | print_case is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars fxy (case_expr as { clauses = [_], ... }) =
           let
             val (binds, body) = Code_Thingol.unfold_let (ICase case_expr);
             fun print_let ((pat, _), t) vars =
               vars
               |> print_bind is_pseudo_fun some_thm NOBR pat
               |>> (fn p => Pretty.block
-                  [str "let ", p, str " = ", print_term is_pseudo_fun some_thm vars NOBR t, str ";"])
+                  [str "let ", p, str " = ", 
+                  print_term_gen is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars NOBR t, str ";"])
             val (ps, vars') = fold_map print_let binds vars;
           in
             Pretty.block_enclose (str "{", str "}")
             (ps @ [print_term_gen is_pseudo_fun (NONE, false, box_new, clone) some_thm vars' NOBR body])
           end     
         (*match block*)     
-      | print_case is_pseudo_fun some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
+      | print_case is_pseudo_fun (boxed_list_op, need_box, box_prcs, clone_prcs) some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
           let
             val _ = tracing ("print_case CASE="^print_debug_info_iterm (ICase icase));
             fun print_select (pat, body) =
@@ -598,20 +599,21 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       add ts boxed_l boxed_list
                     end)
                   | _ => boxed_list)
-                val boxed_list_op = 
-                  SOME (add_boxed_list pat [])
+                val boxed_list_op' = 
+                  SOME (add_boxed_list pat 
+                    (case boxed_list_op of SOME boxed_list => boxed_list | NONE => []))
               in 
                 Pretty.block (
                   p 
                   :: str " => "
-                  :: [(print_term_gen is_pseudo_fun (boxed_list_op, false, box_new, clone) some_thm vars' NOBR body)]
+                  :: [(print_term_gen is_pseudo_fun (boxed_list_op', false, box_new, clone) some_thm vars' NOBR body)]
                 )
               end;
           in
             Pretty.block_enclose(
               Pretty.block(
                 [str "match ",
-                print_term_gen is_pseudo_fun (NONE, false, I, clone) some_thm vars NOBR t,
+                print_term_gen is_pseudo_fun (boxed_list_op, false, I, clone) some_thm vars NOBR t,
                 str " {"]
               ),
               str "}"
