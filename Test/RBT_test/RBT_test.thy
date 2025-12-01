@@ -1,12 +1,11 @@
 theory RBT_test imports
  "HOL-Data_Structures.RBT_Set"
  "Rust.Rust_Setup"
- "Go.Go_Setup"
 begin
 
 
 
-definition t1 :: "integer rbt" where
+definition t1 :: "int rbt" where
   "t1 = fold insert [1,2,3,4,5] empty"
 
 fun tree_from_list :: "'a::linorder list \<Rightarrow> 'a rbt" where
@@ -19,8 +18,6 @@ fun trees_equal :: "'a::equal rbt \<Rightarrow> 'a rbt \<Rightarrow> bool" where
   "trees_equal a b = (a = b)"
 
 export_code delete_list tree_from_list join invc trees_equal t1 in Rust
-
-export_code delete_list tree_from_list join invc trees_equal t1 in Go
 
 export_code delete_list tree_from_list join invc trees_equal t1 in OCaml
 end
