@@ -485,6 +485,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           then (str o deresolve) sym @@ str "()"
         else
           let 
+            val wanted = length dom
             val boxed_list = case boxed_list_op 
               of NONE => []
               | SOME boxed_list => boxed_list
@@ -516,6 +517,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 val typs_s_l = map (print_plain_typ NOBR) dom 
                 fun extract_class_dict (Code_Thingol.Dict (_, plain_dict)) = extract_class_plain_dict plain_dict
                 and extract_class_plain_dict (Code_Thingol.Dict_Var {var, index, length, class, ...}) = class
+                  | extract_class_plain_dict (Code_Thingol.Dict_Const _) = ""
                 val classes_s_l = map extract_class_dict (List.concat dicts)
                 val methods_s_l = dedup (List.concat 
                   (map ((map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) 
@@ -537,6 +539,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               if List.null generic_prefixs then (str o deresolve) sym 
               else deresolve_trait_impl sym 
           in
+            if length ts = wanted
+            then 
             [Pretty.block (
             generic_prefixs
             @ funcname
@@ -547,6 +551,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 ts))
             @ [str ")"]
             )]
+            else
+            [print_term_gen is_pseudo_fun (boxed_list_op, false, box_prcs, clone_prcs) some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
           end
       end
     and print_app is_pseudo_fun some_thm vars = 
@@ -715,7 +721,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                         else SOME (str (s^" : Clone")))
                       generic_params
                   in
-                    commas_append ((print_vs_traits vs) @ other_traits)
+                     commas_append ((print_vs_traits vs) @ other_traits)
                   end
               in
                 pair
@@ -723,7 +729,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 then str ""
                 else if not is_impl 
                 then enum "," "<" ">" (map str generic_params)
-                else enum "," "<" ">" (print_traits vs generic_params)
+                else enum "" "<" ">" (print_traits vs generic_params)
                 )
                 (if List.null generic_params
                 then str ""

@@ -1,6 +1,6 @@
 theory semigroup2
   imports
-  Main "Rust.Rust_Setup" "Go.Go_Setup"
+  Main "Rust.Rust_Setup"
 begin
 
 class semigroup =
@@ -54,10 +54,13 @@ end
     }
 }*)
 
+fun zerolist :: "('a :: monoid) list \<Rightarrow> 'a list" where
+  "zerolist xs = map (\<lambda>x. zero) xs"
+
 fun sum :: "('a :: monoid) list \<Rightarrow> 'a" where
   "sum xs = fold plus xs zero"
 
-export_code sum in OCaml
-export_code sum in Rust
+export_code zerolist sum in OCaml
+export_code zerolist sum in Rust
 
 end
