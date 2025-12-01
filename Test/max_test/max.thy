@@ -10,8 +10,8 @@ fun max:: "int \<Rightarrow> int \<Rightarrow> int" where
 fun mymax1:: "int \<Rightarrow> int \<Rightarrow> int" where
 " mymax1 a b = (
   case a > b of
-  True \<Rightarrow> a |
-  False \<Rightarrow> b )
+    True \<Rightarrow> a |
+    False \<Rightarrow> b )
 "
 
 
