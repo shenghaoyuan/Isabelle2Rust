@@ -201,14 +201,16 @@ fun lminus L1 L2 =
   let
     val l1 = dedup L1 
     val l2 = dedup L2 
-    fun minus l1 l2 = case (l1, l2)
-      of (x::l1', y::l2') => 
-        if (x = y) then minus l1' l2'
-        else x::(minus l1' (y::l2'))
-      | (l1', []) => l1'
+    fun minus (x::xs, y::ys) =
+          if x = y then minus(xs, ys)
+          else if x < y then x :: minus(xs, y::ys)
+          else minus(x::xs, ys)
+      | minus (xs, []) = xs
+      | minus ([], _) = []
   in
-    minus l1 l2
-  end;
+    minus (l1, l2)
+  end
+
 
 (** Caml serializer **)
 
@@ -752,13 +754,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       deresolve (t :: ts)
                   |> intro_vars (build (fold Code_Thingol.add_varnames ts));
                 fun add_boxed_list t boxed_list = 
-                  (case t 
-                  of ((IConst (const as {sym as (Constant c), ...})) `$ _) => 
+                  (case (Code_Thingol.unfold_const_app t)
+                  of (SOME (const, ts as (_::_))) => 
                     (let 
-                      val (_, ts) = Code_Thingol.unfold_app t
                       val boxed_l = is_invdependent_typecos const
                       fun add (t::ts) (b::boxed_l') boxed_list = 
-                        if b then t::boxed_list else boxed_list
+                        if b 
+                        then t::(add ts boxed_l' boxed_list) 
+                        else add ts boxed_l' boxed_list
                       | add [] [] boxed_list = boxed_list
                     in
                       add ts boxed_l boxed_list
@@ -767,6 +770,10 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 val boxed_list_op = 
                   if List.null ts then NONE
                   else SOME (fold add_boxed_list ts [])
+                val _ = tracing (" primary_boxed_list_op="^(case boxed_list_op 
+                  of NONE => "NONE"
+                  | SOME boxed_list => 
+                    "SOME"^(wrap_list (map print_debug_info_iterm boxed_list))))
                 val print_pattern_term = (print_term is_pseudo_fun some_thm vars NOBR)
                 val print_expr_term = (print_term_gen is_pseudo_fun (boxed_list_op, false, box_new, clone) some_thm vars NOBR)
               in 
@@ -1225,10 +1232,14 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
           |> map dest_itype
           |> map (fn x => Type_Constructor x)
         val dom_dpdncs = map (lookup_dependent_types program) dom_typs
+        val res = map (List.exists (fn s => s = dttypcon)) dom_dpdncs
         val _ = tracing ("is_invdependent_typecos SYM="^(print_debug_info_sym sym)^
-          "\n DOM="^(wrap_list (map dest_itype dom))^"\n DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs)))
+          "\n TYPCO="^dttypcon^
+          "\n DOM="^(wrap_list (map dest_itype dom))^
+          "\n DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs))^
+          "\n RES="^(wrap_list (map Bool.toString res)))
       in
-        map (List.exists (fn s => s = dttypcon)) dom_dpdncs
+        res
     end;
     fun lookup_constant_typeco_gen program sym = 
       let
@@ -1331,7 +1342,7 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
         val (raw_decls, body) = split_list xs;
         val decls = maps these raw_decls
         val imports = filter (fn (sym, _) => (sym = base)) module_imports
-          |> (fn [(_, imports)] => imports) 
+          |> (fn mods => case mods of [(_, imports)] => imports | [] => []) 
       in (SOME [str base], print_ml_module base decls imports body) end;
 
     (* serialization *)
