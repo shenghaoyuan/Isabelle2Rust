@@ -19,4 +19,10 @@ definition inc_option :: "'a option \<Rightarrow> 'a option"
 instance ..
 end
 
+definition test_inc_option :: "'a::inc option \<Rightarrow> 'a option" where
+"test_inc_option x = inc x"
+
+export_code test_inc_option in OCaml
+export_code test_inc_option in Rust
+
 end
