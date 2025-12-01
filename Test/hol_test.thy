@@ -1,4 +1,3 @@
-
 theory hol_test
 imports
   "HOL-Library.Code_Test"
@@ -18,11 +17,9 @@ test_code \<comment> \<open>Tests for the serialisation of \<^const>\<open>gcd\<
   "gcd 0 0 = (0 :: integer)"
 in Scala
 
-test_code \<comment> \<open>Tests for the serialisation of \<^const>\<open>gcd\<close> on \<^typ>\<open>integer\<close>\<close>
-  "gcd 15 5 = (5 :: int)"
-in Rust
+definition gcd_test :: "bool"  where
+"gcd_test = (gcd (15::int) 5 = 5 )"
 
-definition test1 :: "bool"  where
-"test1 = (gcd (15::int) 5 = 5 )"
+export_code gcd_test in Rust
 
 end
