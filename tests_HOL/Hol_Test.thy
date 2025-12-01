@@ -1,4 +1,4 @@
-theory hol_test
+theory Hol_Test
 imports
   "HOL-Library.Code_Test"
   "Rust.Rust_Setup"

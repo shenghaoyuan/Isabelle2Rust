@@ -1,9 +1,11 @@
-.PHONY: open build code run test clean help
+.PHONY: open build code test clean help
 
 #### Configuration ####
 
+# Default Isabelle theory to open in jEdit
 DEFAULT_FILE    := $(CURDIR)/Rust_Setup.thy
 
+# Isabelle session name (matches ROOT.template/session)
 SESSION         := Test
 ROOT_FILE       := ROOT
 
@@ -11,13 +13,13 @@ ROOT_FILE       := ROOT
 CARGO           ?= cargo
 ISABELLE_BUILD  := isabelle build -v -e -d . $(SESSION)
 
-# Default directories (留空，交给用户/调用处传入)
-# TEST_DIR     ?= tests_targeted          # where .thy tests live
-# RUST_OUT     ?= tests_targeted/Rust_Out # where Rust export/ lives
+# Default directories
+# TEST_DIR        ?= tests_targeted                  # where .thy tests live
+# RUST_OUT   ?= tests_targeted/Rust_Out         # where Rust export/ lives
 # User must provide TEST_THEORY, no default
 
 
-#### Targets ####
+#### Targets ###
 
 
 # Open the default Isabelle theory in jEdit
@@ -51,18 +53,20 @@ code:
 	@$(ISABELLE_BUILD)
 
 # Run exported Rust projects for a given theory.
+# Assumes cargo projects are under:
+#   $(RUST_OUT)/$(TEST_THEORY)/export*/Cargo.toml
 #
 # Requires:
 #   TEST_THEORY    e.g. Max_Test
-#   RUST_OUT       e.g. tests_targeted/Rust_Out
+#   RUST_OUT  e.g. tests_targeted/Rust_Out
 #
 # Usage:
-#   make run TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out
-run:
+#   make test TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out
+test:
 	@if [ -z "$(TEST_THEORY)" ] || [ -z "$(RUST_OUT)" ]; then \
-	  echo "Error: missing parameters for 'run'."; \
-	  echo "Usage:   make run TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"; \
-	  echo "Example: make run TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out"; \
+	  echo "Error: missing parameters for 'test'."; \
+	  echo "Usage:   make test TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"; \
+	  echo "Example: make test TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out"; \
 	  exit 1; \
 	fi
 	@OUT_DIR="$(RUST_OUT)/$(TEST_THEORY)"; \
@@ -82,30 +86,14 @@ run:
 	  echo ""; \
 	done
 
-# Convenience target: build + run in one step.
-#
-# Requires:
-#   TEST_DIR       e.g. tests_targeted
-#   TEST_THEORY    e.g. Max_Test
-#
-# Usage:
-#   make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test
-test:
-	@if [ -z "$(TEST_DIR)" ] || [ -z "$(TEST_THEORY)" ]; then \
-	  echo "Error: missing parameters for 'test'."; \
-	  echo "Usage:   make test TEST_DIR=<dir> TEST_THEORY=<thy-name>"; \
-	  echo "Example: make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test"; \
-	  exit 1; \
-	fi
-	@$(MAKE) build TEST_DIR="$(TEST_DIR)" TEST_THEORY="$(TEST_THEORY)"
-	@$(MAKE) run   TEST_THEORY="$(TEST_THEORY)" RUST_OUT="$(TEST_DIR)/Rust_Out"
-
+# Remove editor and compiler artefacts
 clean:
 	@echo "Cleaning temporary files..."
 	find . -name "*\.thy~" -exec rm {} \;
 	find . -name "*\.cmi"  -exec rm {} \;
 	find . -name "*\.cmo"  -exec rm {} \;
 
+# Show brief usage information
 help:
 	@echo "Available targets:"
 	@echo "  open"
@@ -115,11 +103,8 @@ help:
 	@echo "      Example: make build TEST_DIR=tests_targeted TEST_THEORY=Max_Test"
 	@echo "  code"
 	@echo "      Run isabelle build using the existing ROOT file."
-	@echo "  run TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"
+	@echo "  test TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"
 	@echo "      Run all Cargo projects under RUST_OUT/TEST_THEORY/export*/."
-	@echo "      Example: make run TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out"
-	@echo "  test TEST_DIR=<dir> TEST_THEORY=<thy-name>"
-	@echo "      Build Isabelle session and then run all exported Cargo projects."
-	@echo "      Example: make test TEST_DIR=tests_targeted TEST_THEORY=Max_Test"
+	@echo "      Example: make test TEST_THEORY=Max_Test RUST_OUT=tests_targeted/Rust_Out"
 	@echo "  clean"
 	@echo "      Remove temporary and build artefacts."
