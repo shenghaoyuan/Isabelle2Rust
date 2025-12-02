@@ -1,4 +1,4 @@
-theory Case_Id_Test
+theory Case_Poly_Test
   imports Main "Rust.Rust_Setup"
 begin
 
