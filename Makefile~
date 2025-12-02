@@ -76,7 +76,7 @@ test:
 	  exit 1; \
 	fi
 	@$(MAKE) build TEST_DIR="$(TEST_DIR)" TEST_THEORY="$(TEST_THEORY)"
-	@$(MAKE) run   TEST_DIR="$(TEST_DIR)" TEST_THEORY="$(TEST_THEORY)"
+	@$(MAKE) run   TEST_THEORY="$(TEST_THEORY)" RUST_OUT="$(TEST_DIR)/Rust_Out"
 
 # run all *_Test.thy in tests_targeted (quiet build)
 targeted:
@@ -92,7 +92,7 @@ targeted:
 	  TOTAL=$$((TOTAL+1)); \
 	  echo ">>> [$$TOTAL] $$T"; \
 	  if $(MAKE) -s build_silent TEST_DIR="$$TD" TEST_THEORY="$$T" && \
-	     $(MAKE) -s run TEST_DIR="$$TD" TEST_THEORY="$$T"; then \
+	     $(MAKE) -s run TEST_THEORY="$$T" RUST_OUT="$$TD/Rust_Out"; then \
 	    SUCCESS=$$((SUCCESS+1)); \
 	  else \
 	    FAIL=$$((FAIL+1)); \
