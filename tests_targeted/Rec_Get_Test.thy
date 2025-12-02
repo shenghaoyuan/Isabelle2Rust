@@ -3,6 +3,8 @@ theory Rec_Get_Test
     Main "Rust.Rust_Setup"
 begin
 
+(*Recursive get*)
+
 datatype  option = None | Some int | Rec option
 
 fun get :: "option \<Rightarrow> int" where

@@ -1,4 +1,4 @@
-theory Pair_Test
+theory Type_Pair_Test
   imports Main "Rust.Rust_Setup"
 begin
 

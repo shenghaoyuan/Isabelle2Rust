@@ -1,4 +1,4 @@
-theory Max_If_Test
+theory Func_Max_If_Test
   imports
   Main "Rust.Rust_Setup"
 begin
