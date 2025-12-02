@@ -360,15 +360,13 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 print_app_with_clone is_pseudo_fun (box_prcs, clone_prcs) some_thm vars fxy app
               | NONE => (*closure*)
                 let
-                  val params = map (print_term is_pseudo_fun some_thm vars NOBR)
+                  val params = map (print_term_app is_pseudo_fun some_thm vars NOBR)
                     (snd (Code_Thingol.unfold_app t))
-                  fun commas_append_and_clone prts = 
-                    commas_append (map (fn t => str (clone(Pretty.string_of t))) prts)
                 in
                   Pretty.block(
-                    print_term is_pseudo_fun some_thm vars NOBR t1
+                    print_term_decl is_pseudo_fun some_thm vars NOBR t1
                     :: str " ("
-                    :: commas_append_and_clone params
+                    :: commas_append params
                     @ [str ")"]
                   )
                 end)
@@ -393,7 +391,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               ),
               str "})"
             )
-            ([print_term_gen is_pseudo_fun (false, I, clone) some_thm vars' NOBR t'])
+            ([print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars' NOBR t'])
           end
       | print_term_gen is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy (t as (ICase case_expr)) =
           let
@@ -407,7 +405,12 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   else print_app_with_clone is_pseudo_fun (box_prcs, clone_prcs) some_thm vars fxy app
               | NONE => print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr)
           end
-    and print_term is_pseudo_fun some_thm vars fxy t = print_term_gen is_pseudo_fun (false, I, I) some_thm vars fxy t
+    and print_term_decl is_pseudo_fun some_thm vars fxy t =
+      print_term_gen is_pseudo_fun (false, I, I) some_thm vars fxy t
+    and print_term_pattern is_pseudo_fun some_thm vars fxy t = 
+      print_term_gen is_pseudo_fun (false, box_pattern, I) some_thm vars fxy t
+    and print_term_app is_pseudo_fun some_thm vars fxy t = 
+      print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars fxy t
     and print_term_with_cons_and_box (need_box, box_prcs) print_term t = 
       let
         (* look up the enum type that iterm t belongs to
@@ -472,7 +475,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 @ [str ")"]
                 )]
             else 
-              [print_term is_pseudo_fun some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
+              [print_term_gen is_pseudo_fun (false, box_prcs, clone_prcs) some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
           end
         else if is_pseudo_fun sym
           then (str o deresolve) sym @@ str "()"
@@ -543,11 +546,11 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       end
     and print_app is_pseudo_fun some_thm vars = 
       gen_print_app (print_app_expr is_pseudo_fun (I, I))
-      (print_term is_pseudo_fun) const_syntax some_thm vars
+      (print_term_decl is_pseudo_fun) const_syntax some_thm vars
     and print_app_with_clone is_pseudo_fun (box_prcs, clone_prcs) some_thm vars =
       gen_print_app (print_app_expr is_pseudo_fun (box_prcs, clone_prcs))
-      (print_term is_pseudo_fun) const_syntax some_thm vars
-    and print_bind is_pseudo_fun = gen_print_bind (print_term_gen is_pseudo_fun (false, box_pattern, I))
+      (print_term_decl is_pseudo_fun) const_syntax some_thm vars
+    and print_bind is_pseudo_fun = gen_print_bind (print_term_pattern is_pseudo_fun)
     and print_case _ _ _ _ _ { clauses = [], ... } =
           (concat o map str) ["panic!(\"empty case\")", "\"empty case\""]
         (*let bind*)
@@ -563,7 +566,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val (ps, vars') = fold_map print_let binds vars;
           in
             Pretty.block_enclose (str "{", str "}")
-            (ps @ [print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars' NOBR body])
+            (ps @ [print_term_app is_pseudo_fun some_thm vars' NOBR body])
           end     
         (*match block*)     
       | print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
@@ -576,14 +579,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 Pretty.block (
                   p 
                   :: str " => "
-                  :: [(print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars' NOBR body)]
+                  :: [(print_term_app is_pseudo_fun some_thm vars' NOBR body)]
                 )
               end;
           in
             Pretty.block_enclose(
               Pretty.block(
                 [str "match ",
-                print_term_gen is_pseudo_fun (false, I, clone) some_thm vars NOBR t,
+                print_term_app is_pseudo_fun some_thm vars NOBR t,
                 str " {"]
               ),
               str "}"
@@ -735,8 +738,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       add ts boxed_l boxed_list
                     end)
                   | _ => boxed_list)
-                val print_pattern_term = (print_term_gen is_pseudo_fun (false, box_pattern, I) some_thm vars NOBR)
-                val print_expr_term = (print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars NOBR)
+                val print_pattern_term = (print_term_pattern is_pseudo_fun some_thm vars NOBR)
+                val print_expr_term = (print_term_app is_pseudo_fun some_thm vars NOBR)
               in 
                 if is_degenerated (*only 1 pattern clause in eqs*)
                 then print_expr_term t 
