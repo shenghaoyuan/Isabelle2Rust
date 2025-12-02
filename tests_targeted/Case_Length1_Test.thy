@@ -1,4 +1,4 @@
-theory Match_Default_Test
+theory Case_Length1_Test
   imports Main "Rust.Rust_Setup"
 begin
 
