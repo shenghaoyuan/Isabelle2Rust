@@ -1,10 +1,9 @@
-*.thy~
-#*.thy#
+\#*\#
+*~
 *.log
 *.cmi
 *.cmo
 *.lock
-*.ML~
 **/export
 **/Rust_Out
 ROOT
