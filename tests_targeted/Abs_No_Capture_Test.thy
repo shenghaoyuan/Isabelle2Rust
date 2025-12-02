@@ -1,4 +1,4 @@
-theory Abs_NoCapture_Test
+theory Abs_No_Capture_Test
   imports Main "Rust.Rust_Setup"
 begin
 

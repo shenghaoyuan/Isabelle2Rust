@@ -1,4 +1,4 @@
-theory Add_Int_Test
+theory Func_Add_Int_Test
   imports Main "Rust.Rust_Setup"
 begin
 

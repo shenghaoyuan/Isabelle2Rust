@@ -1,4 +1,4 @@
-theory Tuple_Test
+theory Type_Tuple_Test
   imports Main "Rust.Rust_Setup"
 begin
 

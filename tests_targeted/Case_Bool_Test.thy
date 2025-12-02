@@ -1,4 +1,4 @@
-theory Match_Test
+theory Case_Bool_Test
   imports Main "Rust.Rust_Setup"
 begin
 

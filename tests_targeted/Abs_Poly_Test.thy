@@ -1,4 +1,4 @@
-theory Abs_Id_Test
+theory Abs_Poly_Test
   imports Main "Rust.Rust_Setup"
 begin
 
