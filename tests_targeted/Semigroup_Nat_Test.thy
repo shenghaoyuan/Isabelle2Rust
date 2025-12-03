@@ -1,4 +1,4 @@
-theory Class_Semigroup_Nat_Test
+theory Semigroup_Nat_Test
   imports Main "Rust.Rust_Setup"
 begin
 

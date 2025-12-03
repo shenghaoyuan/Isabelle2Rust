@@ -360,11 +360,11 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 print_app_with_clone is_pseudo_fun (box_prcs, clone_prcs) some_thm vars fxy app
               | NONE => (*closure*)
                 let
-                  val params = map (print_term_app is_pseudo_fun some_thm vars NOBR)
-                    (snd (Code_Thingol.unfold_app t))
+                  val (t', ts') = Code_Thingol.unfold_app t 
+                  val params = map (print_term_app is_pseudo_fun some_thm vars NOBR) ts'
                 in
                   Pretty.block(
-                    print_term_decl is_pseudo_fun some_thm vars NOBR t1
+                    print_term_decl is_pseudo_fun some_thm vars NOBR t'
                     :: str " ("
                     :: commas_append params
                     @ [str ")"]
@@ -1363,11 +1363,11 @@ fun fn_trait_impl_syntax print_typ fxy [ty1, ty2] =
     val params = List.take (ts, ((List.length ts) - 1))
   in  
     Pretty.block(
-      str "(impl Fn"
+      str "impl Fn"
       :: enum "," "(" ")" params
       :: str " -> "
       :: ret
-      :: [str ")"]
+      :: [str " + Clone"]
     )
   end;
 
