@@ -18,7 +18,13 @@ test_code \<comment> \<open>Tests for the serialisation of \<^const>\<open>gcd\<
 in Scala
 
 definition gcd_test :: "bool"  where
-"gcd_test = (gcd (15::int) 5 = 5 )"
+"gcd_test = ((gcd (15::int) 5 = 5) 
+\<and> (gcd (15::int) (-10) = 5)
+\<and> (gcd ((-10)::int) 15 = 5)
+\<and> (gcd ((-10)::int) (-15) = 5)
+\<and> (gcd (0::int) (-10) = 10)
+\<and> (gcd ((-10)::int) 0 = 10)
+\<and> (gcd (0::int) 0 = 0))"
 
 export_code gcd_test in Rust
 
