@@ -508,21 +508,22 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 and extract_class_plain_dict (Code_Thingol.Dict_Var {var, index, length, class, ...}) = class
                   | extract_class_plain_dict (Code_Thingol.Dict_Const _) = ""
                 val classes_s_l = map extract_class_dict (List.concat dicts)
-                val methods_s_l = dedup (List.concat 
-                  (map ((map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) 
-                  classes_s_l))
+                val classes_methods_s_l = map 
+                  (fn s => (s, 
+                    (dedup o (map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) s)) 
+                  classes_s_l
                 val _ = tracing ("is_inst INST="^inst_s^
-                  "\n CLASSES="^(wrap_list classes_s_l)^"\n METHODS="^(wrap_list methods_s_l)^
+                  "\n CLASSES&METHODS="^(wrap_list (map (fn (c, ms) => (wrap_args [c, wrap_list ms])) classes_methods_s_l))^
                   "\n TYPS="^(wrap_list typs_s_l))
                 fun pred xs ys = List.concat (List.map (fn x => List.map (fn y => (x, y)) ys) xs)
               in
                 (fn xs => if List.null xs then (str o deresolve) sym
                 else (str o deresolve_const o List.hd) xs)
                 (map_filter
-                  (fn (mthd_s, typ_s) => 
-                    if ((after_last_dot mthd_s)^"_"^(after_last_dot typ_s)^"_inst" = inst_s) 
-                    then (SOME mthd_s) else NONE)
-                  (pred methods_s_l typs_s_l))            
+                  (fn ((cls_s, mthd_s_l), typ_s) => 
+                    if ((after_last_dot cls_s)^"_"^(after_last_dot typ_s)^"_inst" = inst_s) 
+                    then (SOME (List.hd mthd_s_l)) else NONE)
+                  (pred classes_methods_s_l typs_s_l))            
               end 
             val funcname = 
               if List.null generic_prefixs then (str o deresolve) sym 
@@ -645,20 +646,21 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   | print_plain_typ _ (tyco `%% tys) = tyco
                 val inst_s = before_last_dot const
                 val classes_s_l = dedup (List.concat (map snd vs))
-                val methods_s_l = dedup (List.concat 
-                  (map ((map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) 
-                  classes_s_l))
+                val classes_methods_s_l = map 
+                  (fn s => (s, 
+                    (dedup o (map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) s)) 
+                  classes_s_l
                 val typs_s_l = dedup (extract_typ print_plain_typ ty)
                 val _ = tracing ("is_inst INST="^inst_s^
-                  "\n CLASSES="^(wrap_list classes_s_l)^"\n METHODS="^(wrap_list methods_s_l)^
+                  "\n CLASSES&METHODS="^(wrap_list (map (fn (c, ms) => (wrap_args [c, wrap_list ms])) classes_methods_s_l))^
                   "\n TYPS="^(wrap_list typs_s_l))
                 fun pred xs ys = List.concat (List.map (fn x => List.map (fn y => (x, y)) ys) xs)
               in
                 map_filter
-                  (fn (mthd_s, typ_s) => 
-                    if ((after_last_dot mthd_s)^"_"^(after_last_dot typ_s)^"_inst" = inst_s) 
-                    then (SOME (mthd_s, typ_s)) else NONE)
-                  (pred methods_s_l typs_s_l)
+                  (fn ((cls_s, mthd_s_l), typ_s) => 
+                    if ((after_last_dot cls_s)^"_"^(after_last_dot typ_s)^"_inst" = inst_s) 
+                    then (SOME (List.hd mthd_s_l, typ_s)) else NONE)
+                  (pred classes_methods_s_l typs_s_l)    
               end
             val impl_method_typ_l = is_inst const (vs, ty)
             val is_impl = ((List.length impl_method_typ_l) = 1)
