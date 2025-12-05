@@ -1,7 +1,6 @@
-(*  Title:      Tools/Code/code_ml.ML
-    Author:     Florian Haftmann, TU Muenchen
+(*  Title:      Tools/Code/code_rust.ML
 
-Serializer for SML and Caml.
+Serializer for Rust.
 *)
 
 signature CODE_RUST =
@@ -24,89 +23,27 @@ infixr 5 @|;
 
 val target = "Rust";
 
-(** print debug info **)
+datatype binding =
+    Function of string * (typscheme * ((iterm list * iterm) * (thm option * bool)) list)
+  | Instance of (string * class) * { class: class, tyco: string, vs: (vname * sort) list,
+        superinsts: (class * (itype * dict list) list) list,
+        inst_params: ((string * (const * int)) * (thm * bool)) list,
+        superinst_params: ((string * (const * int)) * (thm * bool)) list };
 
-fun wrap_args sl = "(" ^ String.concatWith ", " sl ^ ")"
-fun wrap_list sl = "[" ^ String.concatWith ", " sl ^ "]"
-fun wrap_struct sl = "{" ^ String.concatWith ", " sl ^ "}"
-fun print_debug_info_itype (ITyVar itypvn) = itypvn
-  | print_debug_info_itype (vn `%% itypes) = 
-    vn ^"`%%"^ wrap_list (map print_debug_info_itype itypes) 
-fun print_debug_info_dict (Dict (classrels, plain_dict)) = 
-  let 
-    fun print_classrels classrels  = 
-      wrap_list (map (fn (s1, s2) => wrap_args [s1, s2]) classrels) (*type class = string*)
-  in
-    "Dict="^wrap_args [print_classrels classrels , print_plain_dict plain_dict]
-  end
-and print_plain_dict (Dict_Const ((s, c), args)) = 
-    "Dict_Const="^wrap_args [(wrap_args [s, c]),
-      wrap_list (map (fn (ityp, dicts) =>
-        wrap_args [(print_debug_info_itype ityp), wrap_list (map print_debug_info_dict dicts)]) args)]  
-  | print_plain_dict (Dict_Var {var, index, length, class, unique}) = 
-    "Dict_Var="^wrap_struct ["var: "^var, "index: "^Int.toString index, "length: "^Int.toString length, 
-      "class: "^class, "unique: "^Bool.toString unique]
-fun print_debug_info_sym sym = case sym of
-    Constant a => "Constant="^a 
-    | Type_Constructor b => "Type_Constructor="^b
-    | Type_Class c =>"Type_Class="^ c 
-    | Class_Relation (d1, d2) => "Class_Relation="^wrap_args [d1, d2]
-    | Class_Instance (e1, e2) => "Class_Instance="^wrap_args [e1, e2]
-    | Module f => "Module"^f 
-fun print_debug_info_const {sym, typargs, dicts, dom, range, annotation} = 
-  let 
-    val sym_base = print_debug_info_sym sym
-    val annot = case annotation of 
-      NONE => "NONE"
-      | SOME a => print_debug_info_itype a
-  in
-    wrap_struct ["sym: "^sym_base, "typargs: "^wrap_list (map print_debug_info_itype typargs),
-      "dicts: "^wrap_list ((map (wrap_list o (map print_debug_info_dict)) dicts)),
-      "dom: "^wrap_list (map print_debug_info_itype dom),
-      "range: "^print_debug_info_itype range, "annotation: "^annot]
-  end
-fun dest_vname v = case v of
-  NONE => "Anonymous"
-  | SOME vname => vname
-fun print_debug_info_iterm (IConst const) = 
-    print_debug_info_const const
-  | print_debug_info_iterm (IVar vname) = 
-    dest_vname vname
-  | print_debug_info_iterm (t1 `$ t2) =
-    "(" ^ print_debug_info_iterm t1 ^ "`$" ^ print_debug_info_iterm t2 ^ ")"
-  | print_debug_info_iterm ((v, ityp1) `|=> (t, ityp2)) =
-    wrap_args [wrap_args [dest_vname v, print_debug_info_itype ityp1], 
-      wrap_args [print_debug_info_iterm t, print_debug_info_itype ityp2]]
-  | print_debug_info_iterm (ICase {term, typ, clauses, primitive}) =
-    wrap_struct ["term: "^print_debug_info_iterm term, "typ: "^print_debug_info_itype typ,
-    "clauses: "^wrap_list (map (fn (t1, t2) 
-      => wrap_args [print_debug_info_iterm t1, print_debug_info_iterm t2]) clauses),
-    "primitive: "^print_debug_info_iterm primitive]
-fun dest_typscheme (s, t) = 
-  wrap_args [wrap_list (map (fn (t1, t2) => wrap_args [t1, wrap_list t2]) s), print_debug_info_itype t]
-fun print_debug_info_thingol_stmt Code_Thingol.NoStmt = 
-    "NoStmt"
-  | print_debug_info_thingol_stmt (Code_Thingol.Fun ((scheme, args), _)) = 
-    "Fun="^wrap_args ["typscheme="^dest_typscheme scheme, "patterns="^wrap_list (map (fn ((ts, t), _) =>
-      wrap_args [wrap_list (map print_debug_info_iterm ts)]^"=>"^print_debug_info_iterm t) args)]
-  | print_debug_info_thingol_stmt (Code_Thingol.Datatype (vns, cos)) = 
-    "Datatype="^wrap_args [wrap_list vns, wrap_list (map (fn ((v, args), itypes) => 
-      wrap_args [wrap_args [v, wrap_list args], wrap_list (map print_debug_info_itype itypes)]) cos)]
-  | print_debug_info_thingol_stmt (Code_Thingol.Datatypecons v) = 
-    "Datatypecons="^v   
-  | print_debug_info_thingol_stmt (Code_Thingol.Class (c, (rels, params))) = 
-    "Class="^wrap_args [c, "rels="^wrap_list (map (fn (c1, c2) => wrap_args [c1, c2]) rels),
-      "params="^wrap_list (map (fn (s,t) => wrap_args [s, print_debug_info_itype t]) params)]
-  | print_debug_info_thingol_stmt (Code_Thingol.Classrel (c1, c2)) = 
-    "Classrel="^wrap_args[c1, c2]
-  | print_debug_info_thingol_stmt (Code_Thingol.Classparam p) = 
-    "Classparam="^p         
-  | print_debug_info_thingol_stmt (Code_Thingol.Classinst {class, tyco, vs, ...}) = 
-    "Classinst="^wrap_struct ["class: "^class, "tyco: "^tyco, 
-      "vs: "^wrap_list (map (fn (t1, t2) => wrap_args [t1, wrap_list t2]) vs), "..."]
-fun print_debug_info_node ((sym, stmt), syms) =
-  wrap_struct [ "key: "^print_debug_info_sym sym, "stmt: "^print_debug_info_thingol_stmt stmt,
-   "children: "^wrap_list (map print_debug_info_sym syms)]
+datatype stmt =
+    Exc of string * (typscheme * int)
+  | Val of binding
+  | Funs of (Code_Namespace.export * binding) list * Code_Symbol.T list
+  | Datas of (string * (vname list * ((string * vname list) * itype list) list)) list
+  | Class of string * (vname * ((class * class) list * (string * itype) list));
+
+fun print_product _ [] = NONE
+  | print_product print [x] = SOME (print x)
+  | print_product print xs = (SOME o enum " *" "" "") (map print xs);
+
+fun tuplify _ _ [] = NONE
+  | tuplify print fxy [x] = SOME (print fxy x)
+  | tuplify print _ xs = SOME (enum "," "(" ")" (map (print NOBR) xs));
 
 fun commas_append prts = 
   let 
@@ -116,28 +53,6 @@ fun commas_append prts =
   in
     combine (Pretty.commas prts)
   end
-
-datatype ml_binding =
-    ML_Function of string * (typscheme * ((iterm list * iterm) * (thm option * bool)) list)
-  | ML_Instance of (string * class) * { class: class, tyco: string, vs: (vname * sort) list,
-        superinsts: (class * (itype * dict list) list) list,
-        inst_params: ((string * (const * int)) * (thm * bool)) list,
-        superinst_params: ((string * (const * int)) * (thm * bool)) list };
-
-datatype ml_stmt =
-    ML_Exc of string * (typscheme * int)
-  | ML_Val of ml_binding
-  | ML_Funs of (Code_Namespace.export * ml_binding) list * Code_Symbol.T list
-  | ML_Datas of (string * (vname list * ((string * vname list) * itype list) list)) list
-  | ML_Class of string * (vname * ((class * class) list * (string * itype) list));
-
-fun print_product _ [] = NONE
-  | print_product print [x] = SOME (print x)
-  | print_product print xs = (SOME o enum " *" "" "") (map print xs);
-
-fun tuplify _ _ [] = NONE
-  | tuplify print fxy [x] = SOME (print fxy x)
-  | tuplify print _ xs = SOME (enum "," "(" ")" (map (print NOBR) xs));
 
 fun to_snake_case s =
   let
@@ -194,9 +109,7 @@ fun dedup_sorted eq (lst : string list) = case lst
     if eq(x1, x2) then dedup_sorted eq (x2 :: rest)
     else x1 :: dedup_sorted eq (x2 :: rest);
 fun dedup (lst : string list) : string list = dedup_sorted (op=) (mergesort (op<=) lst)
-(* log-efficiency list minus
-  lminus L1 L2 = L1 \ L2
-*)
+(* log-efficiency list minus*)
 fun lminus L1 L2 = 
   let
     val l1 = dedup L1 
@@ -212,11 +125,10 @@ fun lminus L1 L2 =
   end
 
 
-(** Caml serializer **)
+(** Rust serializer **)
 
 val print_rust_string =
   let
-    (*fun unicode i = "\\u" ^ align_right "0" 4 (Int.fmt StringCvt.HEX i)*)
     fun unicode i = "\\u{" ^ Int.toString i ^ "}"
     fun char "\"" = "\\\""
       | char "\\" = "\\\\"
@@ -230,11 +142,6 @@ val print_rust_string =
         end;
   in quote o translate_string char end;
 
-(* extract function type
-  "fun`%%[A, fun`%%[B, C]]" => [A, B, C] = A -> B -> C
-  "fun`%%[fun`%%[A, B], fun`%%[C, D]]" => [A->B, C, D] = (A -> B) -> C -> D
-  "fun`%%[A, fun`%%[fun`%%[B, C], D]]" => [A, B->C, D] = A -> (B -> C) -> D   
-*)
 fun extract_typ print_typ (_`%%[ty1, ty2]) = 
   print_typ (INFX (1, X)) ty1
   :: (case ty2 
@@ -242,11 +149,10 @@ fun extract_typ print_typ (_`%%[ty1, ty2]) =
     | _ => [print_typ (INFX (1, X)) ty2])
   | extract_typ print_typ ty = [print_typ (INFX (1, X)) ty]
 
-fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve 
+fun print_rust_stmt tyco_syntax const_syntax reserved is_constr deresolve 
   is_inf_typeco is_invdependent_typecos 
   lookup_constant_typeco lookup_class_methods lookup_method_class =
   let
-    val _ = tracing "\nprint_ocmal_stmt IN"
     val deresolve_const = deresolve o Constant;
     val deresolve_typco = deresolve o Type_Constructor;
     val deresolve_class = deresolve o Type_Class;
@@ -259,8 +165,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
     fun to_upper s = (String.implode (map Char.toUpper (String.explode s)))
     fun print_tyco_expr_gen tyco_op is_head (sym, tys) = 
       let
-        val _ = tracing ("print_tyco_expr_gen"^
-          wrap_args [print_debug_info_sym sym, wrap_list (map print_debug_info_itype tys)])       
         val isinf = (case tyco_op 
           of NONE => false
           | (SOME co) => is_inf_typeco co sym)
@@ -349,11 +253,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           else str (clone_prcs (lookup_var vars v))
       | print_term_gen is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy (t as t1 `$ t2)=
           let                 
-            val _ = tracing ("print_term `$ ITERM="^
-              print_debug_info_iterm t^
-              "\n app="^
-              (fn (t,ts) => wrap_args [print_debug_info_iterm t, wrap_list (map print_debug_info_iterm ts)])
-              (Code_Thingol.unfold_app t))
             fun print_app_term (t as t1 `$ t2) =
               (case Code_Thingol.unfold_const_app t
               of SOME app => (*function or typeco*)
@@ -375,8 +274,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           end
       | print_term_gen is_pseudo_fun _ some_thm vars _ (t as _ `|=> _) =
           let
-            val _ = tracing ("print_term `|=> ITERM="^
-              print_debug_info_iterm t)          
             val (binds, t') = Code_Thingol.unfold_pat_abs t;
             val (ps, vars') = fold_map (print_bind is_pseudo_fun some_thm BR o fst) binds vars;
             val typs = map ((print_typ NOBR) o snd) binds;
@@ -394,17 +291,12 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             ([print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars' NOBR t'])
           end
       | print_term_gen is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy (t as (ICase case_expr)) =
-          let
-            val _ = tracing ("print_term Icase ITERM="^
-              print_debug_info_iterm t)
-          in
-            (case Code_Thingol.unfold_const_app (#primitive case_expr)
+          case Code_Thingol.unfold_const_app (#primitive case_expr)
             of SOME (app as ({ sym = Constant const, ... }, _)) =>
                   if is_none (const_syntax const)
                   then print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr
                   else print_app_with_clone is_pseudo_fun (box_prcs, clone_prcs) some_thm vars fxy app
-              | NONE => print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr)
-          end
+              | NONE => print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars fxy case_expr
     and print_term_decl is_pseudo_fun some_thm vars fxy t =
       print_term_gen is_pseudo_fun (false, I, I) some_thm vars fxy t
     and print_term_pattern is_pseudo_fun some_thm vars fxy t = 
@@ -413,12 +305,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       print_term_gen is_pseudo_fun (false, box_new, clone) some_thm vars fxy t
     and print_term_with_cons_and_box (need_box, box_prcs) print_term t = 
       let
-        (* look up the enum type that iterm t belongs to
-          for iterm t as ((((Iconst c) `$ t1') `$ t2') `$ ... tn')
-        *)
-        val _ = tracing ("print_term_with_cons_and_box "^(print_debug_info_iterm t)^
-          "\n need_box="^(Bool.toString need_box)^
-          "\n box_prcs="^(box_prcs "something"))
         fun lookup_typeco t = 
           (case (Code_Thingol.unfold_const_app t) 
             of (SOME ((const as {sym as (Constant c), ...}), _))
@@ -442,23 +328,15 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
           if need_box 
           then (box_prcs term_with_cons) 
           else term_with_cons
-        val _ = tracing (" ="^term_with_box)
       in
         str term_with_box
       end
     and print_app_expr is_pseudo_fun (box_prcs, clone_prcs)
        some_thm vars (app as ((const as { sym, dicts, dom, range, ... }), ts)) =
-      let 
-        val _ = tracing ("print_app_expr CONST="^
-          wrap_args ["app="^print_debug_info_const const, "params="^
-            wrap_list (map print_debug_info_iterm ts)]^
-          "\n is_constr sym="^Bool.toString(is_constr sym))
-      in
         if is_constr sym then
           let 
             val wanted = length dom
             val need_box_list = is_invdependent_typecos const
-            val _ = tracing (" need_box_list="^wrap_list (map Bool.toString need_box_list))
           in
             if wanted = 0
             then [(str o deresolve) sym]
@@ -476,7 +354,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 )]
             else 
               [print_term_gen is_pseudo_fun (false, box_prcs, clone_prcs) some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
-          end
+            end
         else if is_pseudo_fun sym
           then (str o deresolve) sym @@ str "()"
         else
@@ -512,9 +390,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                   (fn s => (s, 
                     (dedup o (map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) s)) 
                   classes_s_l
-                val _ = tracing ("is_inst INST="^inst_s^
-                  "\n CLASSES&METHODS="^(wrap_list (map (fn (c, ms) => (wrap_args [c, wrap_list ms])) classes_methods_s_l))^
-                  "\n TYPS="^(wrap_list typs_s_l))
                 fun pred xs ys = List.concat (List.map (fn x => List.map (fn y => (x, y)) ys) xs)
               in
                 (fn xs => if List.null xs then (str o deresolve) sym
@@ -544,7 +419,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             else
             [print_term_gen is_pseudo_fun (false, box_prcs, clone_prcs) some_thm vars NOBR (Code_Thingol.saturated_application wanted app)]
           end
-      end
     and print_app is_pseudo_fun some_thm vars = 
       gen_print_app (print_app_expr is_pseudo_fun (I, I))
       (print_term_decl is_pseudo_fun) const_syntax some_thm vars
@@ -572,7 +446,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         (*match block*)     
       | print_case is_pseudo_fun (need_box, box_prcs, clone_prcs) some_thm vars _ (icase as { term = t, typ = _, clauses = clauses, ... }) =
           let
-            val _ = tracing ("print_case CASE="^print_debug_info_iterm (ICase icase));
             fun print_select (pat, body) =
               let
                 val (p, vars') = print_bind is_pseudo_fun some_thm NOBR pat vars;
@@ -598,8 +471,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
       [str "val", str (deresolve sym), str ":", print_typscheme typscheme];
     fun print_datatype_decl definer (tyco, (vs, cos)) =
       let
-        fun print_debug_info_co ((co, vs), tys) = wrap_args[wrap_args [co, wrap_list(vs)], wrap_list (map print_debug_info_itype tys)]
-        val _ = tracing ("print_datatype_decl TYCO=" ^ tyco ^ "\n VS=" ^ wrap_list vs ^ "\n COS=" ^ wrap_list (map print_debug_info_co cos))
         fun print_co ((co, _), []) = str (deresolve_const co)
           | print_co ((co, _), tys) = 
             concat [
@@ -627,10 +498,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
         (commas_append (map print_co cos))
       end;
     fun print_def is_pseudo_fun needs_typ definer
-          (ML_Function (const, (vs_ty as (vs, ty), eqs))) =
+          (Function (const, (vs_ty as (vs, ty), eqs))) =
           let
-            val _ = tracing ("print_def FUN of " ^const^ " = "^
-              print_debug_info_thingol_stmt (Code_Thingol.Fun ((vs_ty, eqs),NONE)))
             fun to_tuple l prt = if (length l >= 2) then Pretty.block ([str "(", prt, str ")"]) else prt;
             fun is_inst const (vs, ty) = 
               let
@@ -651,9 +520,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                     (dedup o (map fst) o (lookup_class_methods print_plain_typ) o (fn x => (Type_Class x))) s)) 
                   classes_s_l
                 val typs_s_l = dedup (extract_typ print_plain_typ ty)
-                val _ = tracing ("is_inst INST="^inst_s^
-                  "\n CLASSES&METHODS="^(wrap_list (map (fn (c, ms) => (wrap_args [c, wrap_list ms])) classes_methods_s_l))^
-                  "\n TYPS="^(wrap_list typs_s_l))
                 fun pred xs ys = List.concat (List.map (fn x => List.map (fn y => (x, y)) ys) xs)
               in
                 map_filter
@@ -665,7 +531,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val impl_method_typ_l = is_inst const (vs, ty)
             val is_impl = ((List.length impl_method_typ_l) = 1)
             val impl_method_typ_op = if is_impl then (fn [(m, t)] => SOME (m, t)) impl_method_typ_l else NONE
-            val _ = tracing (" IS_IMPL="^(Bool.toString is_impl)^"\n IMPL_METHOD_TYP="^(wrap_list (map (fn (s1, s2) => wrap_args [s1, s2]) impl_method_typ_l)))                
             fun print_generics_and_traits vs ty = 
               let
                 fun extract_generics t =
@@ -674,10 +539,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                       | aux (`%% (_, tys), acc) = List.foldl aux acc tys
                   in aux (t, []) end
                 val generic_params = dedup (extract_generics ty)
-                val _ = tracing ("print_generics_and_traits GENERIC_PARAMS="^wrap_list generic_params)
                 fun print_traits vs generic_params = 
                   let
-                    val _ = tracing("print_traits TYPSCHEME="^wrap_list(map(fn (vname, sort) => wrap_args[vname, wrap_list sort]) vs))
                     fun print_vs_traits vs = 
                       map 
                       (fn (vname, sort) =>
@@ -719,9 +582,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             val (generics, traits) = print_generics_and_traits vs ty;
             fun print_eqn is_degenerated ((ts, t), (some_thm, _)) =
               let
-                val _ = tracing ("print_def EQN of TS =" ^ 
-                  wrap_list (map print_debug_info_iterm ts) ^ " T=" ^
-                  print_debug_info_iterm t)
                 val vars = reserved
                   |> intro_base_names_for (is_none o const_syntax)
                       deresolve (t :: ts)
@@ -761,7 +621,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 val (mthd_s, impl_typ_s) = (fn SOME x => x) impl_method_typ_op
                 val impl_typ_s' = deresolve_typco impl_typ_s
                 val typs_s = dedup (map Pretty.string_of (extract_typ print_typ ty))
-                val _ = tracing ("print_impl TYPS="^(wrap_list typs_s))
                 val impl_typ = str (List.hd (filter (fn s => String.isSubstring impl_typ_s' s) typs_s))
               in
                 Pretty.block_enclose (
@@ -780,14 +639,11 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               end
             fun print_eqns (vs_ty as (vs, ty)) is_pseudo eqs =
                   let
-                    val _ = tracing "print_eqns"
                     val vars = reserved
                           |> intro_base_names_for (is_none o const_syntax)
                               deresolve (map (snd o fst) eqs)
                     val dummy_parms = (map str o aux_params vars o map (fst o fst)) eqs;
-                    val _ = tracing (" TY="^print_debug_info_itype ty)
                     val typs = extract_typ print_typ ty
-                    val _ = tracing (" extracting"^wrap_list (map Pretty.string_of typs))
                     val param_typs = List.take (typs, (List.length dummy_parms))
                     val ret_typs = List.drop (typs, (List.length dummy_parms))
                     val ret_typ = (case ret_typs
@@ -805,7 +661,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                             :: [ret]
                           )
                         end)
-                    (* all params are immutable references*)
                     val dummy_parms_with_typs = ListPair.zip (dummy_parms, param_typs)
                       |> map (fn (prt1, prt2) => Pretty.block ([prt1, str ": ", prt2]))
                     fun is_const_expr ts t = 
@@ -817,8 +672,6 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                           | _ => []) 
                         val pattern_terms = List.concat (map unfold_term ts)
                         val expr_terms = unfold_term t
-                        val _ = tracing ("is_const_expr pattern_terms="^(wrap_list (map print_debug_info_iterm pattern_terms))^
-                          "\n expr_terms="^(wrap_list (map print_debug_info_iterm expr_terms)))
                       in
                         not (fold (fn t => fn acc => (List.exists (fn t' => t' = t) pattern_terms) orelse acc) expr_terms false)
                       end
@@ -873,7 +726,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             ))
           end
       | print_def is_pseudo_fun _ definer
-          (ML_Instance (inst as (tyco, class), { vs, superinsts, inst_params, ... })) =
+          (Instance (inst as (tyco, class), { vs, superinsts, inst_params, ... })) =
           let
             fun print_super_instance (super_class, dss) =
               concat [
@@ -904,8 +757,8 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               ]
             ))
           end;
-    (*fun print_stmt: Code_Namespace.export -> ml_stmt -> Pretty.T list * Pretty.T*)
-     fun print_stmt _ (ML_Exc (const, (vs_ty, n))) = pair
+    (*fun print_stmt: Code_Namespace.export -> stmt -> Pretty.T list * Pretty.T*)
+     fun print_stmt _ (Exc (const, (vs_ty, n))) = pair
           [print_val_decl print_typscheme (Constant const, vs_ty)]
           (String.concat (
             "let"
@@ -916,14 +769,14 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             @@ print_rust_string const
           ) 
           |> str)
-      | print_stmt _ (ML_Val binding) =
+      | print_stmt _ (Val binding) =
           let
             val (sig_p, p) = print_def (K false) true "fn" binding
           in pair
             [sig_p]
             (p)
           end
-      | print_stmt _ (ML_Funs ((export, binding) :: exports_bindings, pseudo_funs)) =
+      | print_stmt _ (Funs ((export, binding) :: exports_bindings, pseudo_funs)) =
           let
             val print_def' = print_def (member (op =) pseudo_funs) false;
             fun print_pseudo_fun sym = concat [
@@ -942,7 +795,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
               ((export :: map fst exports_bindings) ~~ sig_ps))
             (Pretty.chunks2 (ps @ p :: pseudo_ps))
           end
-     | print_stmt _ (ML_Datas [(tyco, (vs, []))]) =
+     | print_stmt _ (Datas [(tyco, (vs, []))]) =
           let
             val ty_p = print_tyco_expr (Type_Constructor tyco, map ITyVar vs);
           in
@@ -950,7 +803,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
             [concat [str "type", ty_p]]
             (concat [str "type", ty_p, str "=", str "EMPTY__"])
           end
-     | print_stmt export (ML_Datas (datas)) = 
+     | print_stmt export (Datas (datas)) = 
           let
             val head = (if Code_Namespace.not_private export then "pub enum" else "enum");
             val decl_ps = map (print_datatype_decl head) datas;
@@ -963,7 +816,7 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
                 (datas))
             (Pretty.chunks (ps @| p))
           end
-     | print_stmt export (ML_Class (class, (v, (classrels, classparams)))) =
+     | print_stmt export (Class (class, (v, (classrels, classparams)))) =
           let
             fun print_super_traits classrels =
               if (List.length classrels) = 0 then str ""
@@ -992,21 +845,21 @@ fun print_ocaml_stmt tyco_syntax const_syntax reserved is_constr deresolve
 
 (** print module **)
 
-fun print_ocaml_module name decls imports body =
+fun print_rust_module name decls imports body =
   Pretty.chunks2 (
     if List.null imports then body
     else (Pretty.chunks (map (fn i => str ("use crate::"^i^"::*;")) imports) :: body)
   );
 
-val literals_ocaml = let
-  fun numeral_ocaml k = if k < 0
-    then "(Z.neg " ^ numeral_ocaml (~ k) ^ ")"
+val literals_rust = let
+  fun numeral_rust k = if k < 0
+    then "(Z.neg " ^ numeral_rust (~ k) ^ ")"
     else if k <= 1073741823
       then "(Z.of_int " ^ string_of_int k ^ ")"
       else "(Z.of_string " ^ quote (string_of_int k) ^ ")"
 in Literals {
   literal_string = print_rust_string,
-  literal_numeral = numeral_ocaml,
+  literal_numeral = numeral_rust,
   literal_list = enum ";" "[" "]",
   infix_cons = (6, "::")
 } end;
@@ -1019,9 +872,7 @@ fun variant_snake_case s ctxt =
 fun variant_upper_camel_case s ctxt =
     ctxt |> Name.variant (to_upper_camel_case s)
 
-(** SML/Caml generic part **)
-
-fun ml_program_of_program ctxt module_name reserved identifiers =
+fun rust_program_of_program ctxt module_name reserved identifiers =
   let
     fun namify_const variant base (nsp_const, nsp_type) =
       let
@@ -1038,7 +889,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
       | namify_stmt (Code_Thingol.Classrel _) = namify_const variant_upper_camel_case
       | namify_stmt (Code_Thingol.Classparam _) = namify_const variant_snake_case
       | namify_stmt (Code_Thingol.Classinst _) = namify_const variant_upper_camel_case;
-    fun ml_binding_of_stmt (sym as Constant const, (export, Code_Thingol.Fun ((tysm as (vs, ty), raw_eqs), _))) =
+    fun binding_of_stmt (sym as Constant const, (export, Code_Thingol.Fun ((tysm as (vs, ty), raw_eqs), _))) =
           let
             val eqs = filter (snd o snd) raw_eqs;
             val (eqs', some_sym) = if null (filter_out (null o snd) vs) then case eqs
@@ -1047,27 +898,27 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
                   else (eqs, SOME (sym, member (op =) (Code_Thingol.add_constsyms t []) sym))
                 | _ => (eqs, NONE)
               else (eqs, NONE)
-          in ((export, ML_Function (const, (tysm, eqs'))), some_sym) end
-      | ml_binding_of_stmt (sym as Class_Instance inst, (export, Code_Thingol.Classinst (stmt as { vs, ... }))) =
-          ((export, ML_Instance (inst, stmt)),
+          in ((export, Function (const, (tysm, eqs'))), some_sym) end
+      | binding_of_stmt (sym as Class_Instance inst, (export, Code_Thingol.Classinst (stmt as { vs, ... }))) =
+          ((export, Instance (inst, stmt)),
             if forall (null o snd) vs then SOME (sym, false) else NONE)
-      | ml_binding_of_stmt (sym, _) =
+      | binding_of_stmt (sym, _) =
           error ("Binding block containing illegal statement: " ^ 
             Code_Symbol.quote ctxt sym)
     fun modify_fun (sym, (export, stmt)) =
       let
-        val ((export', binding), some_value_sym) = ml_binding_of_stmt (sym, (export, stmt));
-        val ml_stmt = case binding
-         of ML_Function (const, ((vs, ty), [])) =>
-              ML_Exc (const, ((vs, ty),
+        val ((export', binding), some_value_sym) = binding_of_stmt (sym, (export, stmt));
+        val stmt = case binding
+         of Function (const, ((vs, ty), [])) =>
+              Exc (const, ((vs, ty),
                 (length o filter_out (null o snd)) vs + (length o fst o Code_Thingol.unfold_fun) ty))
           | _ => case some_value_sym
-             of NONE => ML_Funs ([(export', binding)], [])
-              | SOME (sym, true) => ML_Funs ([(export, binding)], [sym])
-              | SOME (_(*sym*), false) => ML_Val binding
-      in SOME (export, ml_stmt) end;
+             of NONE => Funs ([(export', binding)], [])
+              | SOME (sym, true) => Funs ([(export, binding)], [sym])
+              | SOME (_, false) => Val binding
+      in SOME (export, stmt) end;
     fun modify_funs stmts = single (SOME
-      (Code_Namespace.Opaque, ML_Funs (map_split ml_binding_of_stmt stmts |> (apsnd o map_filter o Option.map) fst)))
+      (Code_Namespace.Opaque, Funs (map_split binding_of_stmt stmts |> (apsnd o map_filter o Option.map) fst)))
     fun modify_datatypes stmts =
       let
         val datas = map_filter
@@ -1077,7 +928,7 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
         else datas
           |> split_list
           |> apfst Code_Namespace.join_exports
-          |> apsnd ML_Datas
+          |> apsnd Datas
           |> SOME
           |> single
       end;
@@ -1085,13 +936,10 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
       let
         val stmts' = map 
           (fn (c', (_, stmt')) => (c', stmt')) stmts
-        val _ = tracing ("modify_class STMTS="^
-          wrap_list (map (fn (c', stmt') 
-            => wrap_args [print_debug_info_sym c', print_debug_info_thingol_stmt stmt']) stmts'))
       in
         the_single (map_filter
           (fn (Type_Class class, (export, Code_Thingol.Class stmt)) => SOME (export, (class, stmt)) | _ => NONE) stmts)
-        |> apsnd ML_Class
+        |> apsnd Class
         |> SOME
         |> single
       end;
@@ -1124,15 +972,13 @@ fun ml_program_of_program ctxt module_name reserved identifiers =
       memorize_data = K I, modify_stmts = modify_stmts }
   end;
 
-fun serialize_ml rust_module rust_version rust_edition rust_lints
-    print_ml_module print_ml_stmt ml_extension ctxt
+fun serialize_rust rust_module rust_version rust_edition rust_lints
+    print_rust_module print_rust_stmt rust_extension ctxt
     { module_name, reserved_syms, identifiers, includes,
       class_syntax = _, tyco_syntax, const_syntax } program exports =
   let
     val stmt_list = (Code_Symbol.Graph.dest program)
     val sym_dpdnc_list = map (fn ((sym, _), children) => (sym, children)) stmt_list
-
-    val _ = tracing ("PROGRAM="^String.concatWith "\n" (map print_debug_info_node stmt_list)^"\n")
 
     val rust_module = if rust_module = "" then "\"isabelle_exported\"" else rust_module;
     val rust_version = if rust_version = "" then "\"0.1.0\"" else rust_version;
@@ -1140,16 +986,15 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
     val rust_lints = if rust_lints = "" then "unused = \"allow\"\n nonstandard_style = \"allow\"" else rust_lints;
 
     (* build program *)
-    val { deresolver, hierarchical_program = ml_program } =
-      ml_program_of_program ctxt module_name (Name.make_context reserved_syms)
+    val { deresolver, hierarchical_program = rust_program } =
+      rust_program_of_program ctxt module_name (Name.make_context reserved_syms)
         identifiers exports program;
-    val _ = tracing "Build Program Accomplished"
 
     (* global info look-up functions*)
     (* safe get_node, handle UNDEF exception*)
     fun get_node program sym =         
       (Code_Symbol.Graph.get_node program sym) 
-      handle (Code_Symbol.Graph.UNDEF x) => let val _ = tracing ("EXCEPTION: UNDEF sym "^(print_debug_info_sym sym)) in Code_Thingol.NoStmt end
+      handle (Code_Symbol.Graph.UNDEF x) => Code_Thingol.NoStmt
     (** look up stmt info through sym in 
       program: Code_Symbol.Graph of (key: Code_Symbol.T, ord: Code_Thingol.stmt) 
     **)
@@ -1183,33 +1028,23 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
       | is_inf_typeco co sym =
       let
         val dpdncs = lookup_dependent_types program sym
-        val res = List.exists (fn s => s = co) dpdncs
-        val _ = tracing ("is_inftype TYPECO="^co^"\n SYM="^(print_debug_info_sym sym)^
-        "\n DEPENDCENIES="^ (wrap_list dpdncs)^"\n RES="^Bool.toString res)
       in
         List.exists (fn s => s = co) dpdncs
       end;
     fun is_invdependent_typecos {sym as (Constant t), typargs = _, dicts = _, dom, range = _, annotation = _} =
       let 
         fun dest_itype (ITyVar vn) = vn
-          | dest_itype (v `%% _ (*vns*)) = v   
+          | dest_itype (v `%% _ ) = v   
         val dttypcon = (fn (Code_Thingol.Datatypecons x) => x) (get_node program sym)
         val dom_typs = dom
           |> map dest_itype
           |> map (fn x => Type_Constructor x)
         val dom_dpdncs = map (lookup_dependent_types program) dom_typs
-        val res = map (List.exists (fn s => s = dttypcon)) dom_dpdncs
-        val _ = tracing ("is_invdependent_typecos SYM="^(print_debug_info_sym sym)^
-          "\n TYPCO="^dttypcon^
-          "\n DOM="^(wrap_list (map dest_itype dom))^
-          "\n DEPENDCENIES="^(wrap_list (map wrap_list dom_dpdncs))^
-          "\n RES="^(wrap_list (map Bool.toString res)))
       in
-        res
+        map (List.exists (fn s => s = dttypcon)) dom_dpdncs
     end;
     fun lookup_constant_typeco_gen program sym = 
       let
-        val _ = tracing ("lookup_constant_typeco_gen SYM="^(print_debug_info_sym sym))
         val stmt = get_node program sym
       in
         (case stmt 
@@ -1273,15 +1108,11 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
           end
         val mod_dpdncs = fold get_imports (map fst sym_dpdnc_list) []
         val mod_imports = map (fn (sym, dpdncs) => (sym, (filter (fn x => x <> sym) dpdncs))) mod_dpdncs
-        val _ = tracing (wrap_list(map (fn (mod, mods) => wrap_args ["mod="^mod, "imports="^(wrap_list mods)]) mod_imports)) 
       in
         mod_imports
       end
       val raw_modules = map fst module_imports
 
-    (* fun modify_deresolver: (Code_Symbol.T -> string) -> (Code_Symbol.T -> string) 
-      modify module path format from "A.b" to "a::b"
-    *)
     fun modify_deresolver deresolver sym = 
       let
         val sname = deresolver sym
@@ -1294,7 +1125,7 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
       end
 
     (* print statements *)
-    fun print_stmt prefix_fragments (_, (export, stmt)) = (print_ml_stmt
+    fun print_stmt prefix_fragments (_, (export, stmt)) = (print_rust_stmt
       tyco_syntax const_syntax (make_vars reserved_syms)
       (Code_Thingol.is_constr program) (modify_deresolver (deresolver prefix_fragments))
       is_inf_typeco is_invdependent_typecos 
@@ -1309,22 +1140,20 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
         val decls = maps these raw_decls
         val imports = filter (fn (sym, _) => (sym = base)) module_imports
           |> (fn mods => case mods of [(_, imports)] => imports | [] => []) 
-      in (SOME [str base], print_ml_module base decls imports body) end;
+      in (SOME [str base], print_rust_module base decls imports body) end;
 
     (* serialization *)
     val ps = Code_Namespace.print_hierarchical {
         print_module = print_module, print_stmt = print_stmt,
-        lift_markup = K I } ml_program;
-    val _ = tracing ("\nExported "^(string_of_int (List.length ps))^" Programs: "^wrap_list (map (fn x => case x of NONE => "None" | SOME prts => "Some "^wrap_list (map Pretty.string_of prts)) (map fst ps)))
+        lift_markup = K I } rust_program;
     val modules = map fst ps
       |> map (fn (SOME [x]) => (Pretty.string_of x))
     val unused_modules = lminus raw_modules modules
-    val _ = tracing("mods="^(wrap_list raw_modules)^"  used="^(wrap_list modules)^"  unused="^(wrap_list unused_modules))
     val srcs = ListPair.zip 
-      (map (fn x => ["src", x^ml_extension]) modules, 
+      (map (fn x => ["src", x^rust_extension]) modules, 
       map snd includes @ map snd ps)
     val empty_mods = map (fn x => (pair
-        (["src", x^ml_extension])
+        (["src", x^rust_extension])
         (str "/*Empty module, added to pass compilition*/")))
       unused_modules 
     val toml = pair 
@@ -1349,15 +1178,12 @@ fun serialize_ml rust_module rust_version rust_edition rust_lints
     try (deresolver []))
   end;
 
-val serializer_ocaml : Code_Target.serializer =
-  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_ml "" "" "" "" print_ocaml_module print_ocaml_stmt ".rs");
+val serializer_rust : Code_Target.serializer =
+  Code_Target.parse_args (Scan.succeed ()) #> K (serialize_rust "" "" "" "" print_rust_module print_rust_stmt ".rs");
 
 
 (** Isar setup **)
 
-(* print fn closure trait
-    ((fixity -> itype -> Pretty.T)
-    -> fixity -> itype list -> Pretty.T)*)
 fun fn_trait_impl_syntax print_typ fxy [ty1, ty2] =
   let
     val ts = extract_typ print_typ ("fun"`%%[ty1, ty2])
@@ -1375,12 +1201,10 @@ fun fn_trait_impl_syntax print_typ fxy [ty1, ty2] =
 
 val _ = Theory.setup
   (Code_Target.add_language
-    (target, {serializer = serializer_ocaml, literals = literals_ocaml,
-      check = {env_var = "ISABELLE_OCAMLFIND",
-        make_destination = fn p => p + Path.explode "ROOT.ml"
-          (*extension demanded by Caml compiler*),
-        make_command = fn _ =>
-          "\"$ISABELLE_OCAMLFIND\" ocamlopt -w -p-u -package zarith -linkpkg ROOT.ml </dev/null"},
+    (target, {serializer = serializer_rust, literals = literals_rust,
+      check = {env_var = "",
+        make_destination = I,
+        make_command = fn _ => ""},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
     [(target, SOME (2, fn_trait_impl_syntax))]))
@@ -1397,6 +1221,6 @@ val _ = Theory.setup
     "rec", "ref", "return", "select", "self", "sig", "sizeof", "static", "struct", 
     "super", "switch", "then", "to", "trait", "true", "try", "type", "typeof", "unsafe",
     "unsized", "use", "val", "var", "virtual", "when", "where", "while", "with", "yield"]
-  #> fold (Code_Target.add_reserved target) ["failwith", (*"mod",*) "Z"]);
+  #> fold (Code_Target.add_reserved target) ["failwith", "Z"]);
 
 end; (*struct*)
