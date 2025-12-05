@@ -3,12 +3,12 @@ session Rust = Main +
   theories
     Rust_Setup
 
-session Test in "@TEST_DIR@" = Rust +
-  description "@TEST_THEORY@ test session"
+session Test in "tests_HOL" = Rust +
+  description "Hol_Test test session"
   options [timeout = 300]
   sessions "HOL-Library"
   theories [document = false, condition = ISABELLE_GOEXE]
-    "@TEST_THEORY@"
-  export_files (in "Rust_Out/@TEST_THEORY@") [2]
+    "Hol_Test"
+  export_files (in "Rust_Out/Hol_Test") [2]
     "*:**.rs"
     "*:**.toml"

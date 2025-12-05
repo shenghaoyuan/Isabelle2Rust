@@ -104,12 +104,35 @@ targeted:
 	echo "  Failed: $$FAIL"; \
 	echo "  Total:  $$TOTAL"
 
+
+hol:
+	@echo ">>> Building Hol_Test..."
+	$(MAKE) build TEST_DIR=tests_HOL TEST_THEORY=Hol_Test
+
+	@OUT_DIR="tests_HOL/Rust_Out/Hol_Test/export1/src"; \
+	if [ ! -d "$$OUT_DIR" ]; then \
+	  echo "ERROR: $$OUT_DIR does not exist. Build may have failed."; \
+	  exit 1; \
+	fi; \
+	echo ">>> Replacing main.rs with template..."; \
+	cp tests_HOL/template/main.rs "$$OUT_DIR/main.rs"
+
+	@echo ">>> Running cargo..."
+	@CARGO_TOML="tests_HOL/Rust_Out/Hol_Test/export1/Cargo.toml"; \
+	if [ ! -f "$$CARGO_TOML" ]; then \
+	  echo "ERROR: Cargo.toml not found at $$CARGO_TOML"; \
+	  exit 1; \
+	fi; \
+	RUSTFLAGS="-Awarnings" cargo run --manifest-path "$$CARGO_TOML"
+
+
 clean:
 	@echo "Cleaning temp files and Rust_Out..."
 	find . -name "*\.thy~" -exec rm {} \;
 	find . -name "*\.cmi"  -exec rm {} \;
 	find . -name "*\.cmo"  -exec rm {} \;
 	rm -rf tests_targeted/Rust_Out
+	rm -rf tests_HOL/Hol_Test/target
 
 help:
 	@echo "Available targets:"
