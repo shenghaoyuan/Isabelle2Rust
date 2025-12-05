@@ -141,8 +141,6 @@ help:
 	@echo "  build TEST_DIR=<dir> TEST_THEORY=<thy-name>"
 	@echo "      Generate ROOT from ROOT.template and run isabelle build (verbose)."
 	@echo "      Example: make build TEST_DIR=tests_targeted TEST_THEORY=List_Test"
-	@echo "  build_silent TEST_DIR=<dir> TEST_THEORY=<thy-name>"
-	@echo "      Same as build, but without -v (used internally by 'targeted')."
 	@echo "  code"
 	@echo "      Run isabelle build using the existing ROOT file."
 	@echo "  run TEST_THEORY=<thy-name> RUST_OUT=<rust-out-root>"
