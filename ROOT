@@ -4,11 +4,11 @@ session Rust = Main +
     Rust_Setup
 
 session Test in "tests_targeted" = Rust +
-  description "Type_Tuple_Test test session"
+  description "List_Cons_Test test session"
   options [timeout = 300]
   sessions "HOL-Library"
   theories [document = false, condition = ISABELLE_GOEXE]
-    "Type_Tuple_Test"
-  export_files (in "Rust_Out/Type_Tuple_Test") [2]
+    "List_Cons_Test"
+  export_files (in "Rust_Out/List_Cons_Test") [2]
     "*:**.rs"
     "*:**.toml"
