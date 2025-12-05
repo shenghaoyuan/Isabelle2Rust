@@ -1,6 +1,5 @@
 theory Rust_Setup
   imports "Main"
-    (*Go.Go_Setup*) (** refer *)
 begin
 
 ML_file \<open>code_rust.ML\<close>
