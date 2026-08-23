@@ -151,6 +151,10 @@ export.
 
 ## 7. Evaluation
 
+The commands in this section run complete evaluation workloads rather than
+quick smoke tests. Some paper-scale and RQ3 runs can take hours, depending on
+the machine.
+
 ### 7.1 RQ1: Code-Generation Capability
 
 RQ1 uses three complementary test suites:
@@ -182,6 +186,13 @@ make macro_sbpf
 make micro_sbpf
 ```
 
+On a clean checkout, the first SBPF or x64 validation run also builds the
+Isabelle exports and release binaries. `make macro_sbpf` has no per-case timeout
+by default, so an individual case may run for a long time; the runner prints the
+case name before starting it. For diagnosis, use
+`RUST_CASE_TIMEOUT=30 make macro_sbpf`; a timeout is reported as a failure.
+`make micro_sbpf` processes all 100,000 vectors generated above.
+
 The x86-64 experiments compare the generated stepper with the OCaml export and
 native x86-64 execution.
 
@@ -190,6 +201,9 @@ make x64-gen
 make x64-test
 make x64
 ```
+
+Subsystem-specific options are documented in the [SBPF validation guide](test/sbpf/README.md)
+and the [x86-64 validation guide](test/x64/x64-validation/README.md).
 
 The paper-scale experiments run ten rounds of 100,000 test vectors:
 
