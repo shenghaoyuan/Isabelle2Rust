@@ -36,6 +36,7 @@ class StageResult:
 ROOT = Path(__file__).resolve().parents[4]
 EXEC_DIR = ROOT / "test" / "sbpf" / "tests" / "exec_semantics"
 DATA_DIR = ROOT / "test" / "sbpf" / "tests" / "data"
+BASELINE_THEORY = "bpf_generator_bigint"
 THEORY = os.environ.get("SBPF_THEORY") or "bpf_generator_bigint"
 EXPORT_DIR = Path(
     os.environ.get("SBPF_EXPORT_DIR")
@@ -43,7 +44,7 @@ EXPORT_DIR = Path(
 )
 if not EXPORT_DIR.is_absolute():
     EXPORT_DIR = ROOT / EXPORT_DIR
-OCAML_EXPORT_DIR = ROOT / "test" / "sbpf" / "theory" / "stage1" / "bpf_generator_bigint"
+OCAML_EXPORT_DIR = ROOT / "test" / "sbpf" / "theory" / "stage1" / BASELINE_THEORY
 STEP_JSON = Path(os.environ.get("SBPF_STEP_JSON") or DATA_DIR / "ocaml_in.json")
 if not STEP_JSON.is_absolute():
     STEP_JSON = ROOT / STEP_JSON
@@ -110,33 +111,46 @@ def export_outputs() -> list[Path]:
     ]
 
 
-def ensure_isabelle_export() -> bool:
-    missing = [path for path in export_outputs() if not path.exists()]
-    missing_ocaml = OCAML_EXPORT_DIR / "step_test.ocaml" in missing
-    if missing_ocaml:
-        print(
-            "ERROR: missing fixed OCaml baseline export: "
-            f"{rel(OCAML_EXPORT_DIR / 'step_test.ocaml')}"
-        )
-        return False
-
-    force_rebuild = os.environ.get("REBUILD") == "1"
-    if not missing and not force_rebuild:
-        announce("Isabelle export", f"reusing {rel(EXPORT_DIR)}")
-        return True
-
-    reason = "REBUILD=1" if force_rebuild else "missing " + ", ".join(rel(p) for p in missing)
-    announce("Isabelle export", f"building {THEORY} ({reason})")
+def build_isabelle_export(theory: str, reason: str) -> bool:
+    announce("Isabelle export", f"building {theory} ({reason})")
     rc, _ = run_command(
-        ["make", "build", "TEST_DIR=test/sbpf/theory", f"TEST_THEORY={THEORY}"],
+        ["make", "build", "TEST_DIR=test/sbpf/theory", f"TEST_THEORY={theory}"],
         cwd=ROOT,
     )
-    if rc != 0:
-        return False
+    return rc == 0
 
-    missing_after = [path for path in export_outputs() if not path.exists()]
-    if missing_after:
-        for path in missing_after:
+
+def ensure_isabelle_export() -> bool:
+    ocaml_export = OCAML_EXPORT_DIR / "step_test.ocaml"
+    rust_manifest = EXPORT_DIR / "step_test" / "Cargo.toml"
+    force_rebuild = os.environ.get("REBUILD") == "1"
+    baseline_built = False
+
+    if not ocaml_export.exists():
+        if not build_isabelle_export(
+            BASELINE_THEORY, f"missing fixed OCaml baseline {rel(ocaml_export)}"
+        ):
+            return False
+        baseline_built = True
+
+    target_built_with_baseline = (
+        baseline_built
+        and THEORY == BASELINE_THEORY
+        and EXPORT_DIR == OCAML_EXPORT_DIR
+    )
+    target_built = target_built_with_baseline
+    if (force_rebuild or not rust_manifest.exists()) and not target_built_with_baseline:
+        reason = "REBUILD=1" if force_rebuild else f"missing {rel(rust_manifest)}"
+        if not build_isabelle_export(THEORY, reason):
+            return False
+        target_built = True
+
+    missing = [path for path in export_outputs() if not path.exists()]
+    if not missing and not force_rebuild and not baseline_built and not target_built:
+        announce("Isabelle export", f"reusing {rel(EXPORT_DIR)}")
+
+    if missing:
+        for path in missing:
             print(f"ERROR: expected Isabelle export not found: {rel(path)}")
         return False
     return True

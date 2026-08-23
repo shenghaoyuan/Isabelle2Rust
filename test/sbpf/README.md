@@ -48,10 +48,10 @@ Set `SBPF_STAGE=2` and `SBPF_EXPORT_DIR` to the corresponding directory under
 `make macro_sbpf` calls `tests/exec_semantics/run_macro_sbpf.py`, which drives the
 shared flow:
 
-1. Ensure `theory/bpf_generator.thy` has exported both language versions.
+1. Ensure `theory/bpf_generator_bigint.thy` has exported both language versions.
    The relevant generated artifacts are:
-   - `theory/stage1/bpf_generator/interp_test.ocaml`
-   - `theory/stage1/bpf_generator/interp_test/`
+   - `theory/stage1/bpf_generator_bigint/interp_test.ocaml`
+   - `theory/stage1/bpf_generator_bigint/interp_test/`
 
 2. Generate shared local macro data:
    - source: `tests/exec_semantics/sbpf_ocaml/test.ml`
@@ -79,10 +79,10 @@ The final output is a combined statistical summary for OCaml and Rust.
 `make micro_sbpf` calls `tests/exec_semantics/run_micro_sbpf.py`, which drives
 the shared instruction-level flow:
 
-1. Ensure `theory/bpf_generator.thy` has exported both `step_test` language
+1. Ensure `theory/bpf_generator_bigint.thy` has exported both `step_test` language
    versions:
-   - `theory/stage1/bpf_generator/step_test.ocaml`
-   - `theory/stage1/bpf_generator/step_test/`
+   - `theory/stage1/bpf_generator_bigint/step_test.ocaml`
+   - `theory/stage1/bpf_generator_bigint/step_test/`
 
 2. Read the shared step data from `tests/data/ocaml_in.json`.
 
@@ -117,9 +117,10 @@ Both the OCaml and Rust runners avoid redundant compilation across repeated runs
 via a two-layer cache.
 
 **Layer 1 — Isabelle export** (`ensure_isabelle_export` in `run_macro/micro_sbpf.py`):
-checks whether the exported files under `theory/stage1/bpf_generator/` already
-exist.  If so, `isabelle build` is skipped entirely.  Pass `REBUILD=1` to force
-a re-export.
+checks whether the exported files under `theory/stage1/bpf_generator_bigint/`
+already exist. On a clean checkout it generates the fixed OCaml baseline and
+BigInt Rust export on demand; generated `stage1` files remain untracked. Pass
+`REBUILD=1` to force a re-export.
 
 **Layer 2 — language build** (each runner script):
 after the export step, each runner computes a SHA256 hash of the Isabelle-generated
@@ -134,8 +135,8 @@ Stamp file locations:
 |--------|-------|
 | OCaml macro | `sbpf_ocaml/_build/macro_interp/.macro_interp_cache.json` |
 | OCaml micro | `sbpf_ocaml/_build/micro_step/.micro_step_cache.json` |
-| Rust macro  | `theory/stage1/bpf_generator/interp_test/.rust_macro_cache.json` |
-| Rust micro  | `theory/stage1/bpf_generator/step_test/.rust_micro_cache.json` |
+| Rust macro  | `theory/stage1/bpf_generator_bigint/interp_test/.rust_macro_cache.json` |
+| Rust micro  | `theory/stage1/bpf_generator_bigint/step_test/.rust_micro_cache.json` |
 
 Rebuilds are triggered when: the Isabelle export produces different content,
 the glue file is edited, the toolchain changes, or `REBUILD=1` is set.
