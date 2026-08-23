@@ -48,8 +48,9 @@ WRITE_TEST_ROOT = mkdir -p $(TEST_ROOT_DIR); { printf '%s\n' 'session $(TEST_SES
 
 #### Code generation ####
 
+# `-R` uses a generated requirements heap; let jEdit build or refresh it.
 open:
-	isabelle jedit -n -d . -R $(PROJECT_SESSION) $(DEFAULT_FILE)
+	isabelle jedit -d . -R $(PROJECT_SESSION) $(DEFAULT_FILE)
 
 open_test:
 	@if [ -z "$(TEST_DIR)" ] || [ -z "$(TEST_THEORY)" ]; then \
@@ -58,7 +59,7 @@ open_test:
 	  exit 1; \
 	fi
 	@$(WRITE_TEST_ROOT)
-	isabelle jedit -n -d $(TEST_ROOT_DIR) -R $(TEST_SESSION) "$(TEST_DIR)/$(TEST_THEORY).thy"
+	isabelle jedit -d $(TEST_ROOT_DIR) -R $(TEST_SESSION) "$(TEST_DIR)/$(TEST_THEORY).thy"
 
 # build one theory (verbose)
 build:
