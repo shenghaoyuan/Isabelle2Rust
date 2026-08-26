@@ -1,6 +1,6 @@
 suite,pairs,stage1_accepted,stage2_accepted,stage1_rust_loc,stage2_rust_loc,reduction_percent,translation_seconds,optimization_seconds
-HCT-standard,1,1,1,53329,45503,14.7,unavailable,unavailable
-HCT-binary-nat,1,1,1,53779,44519,17.2,unavailable,unavailable
-Unit,53,53,53,9098,8633,5.1,unavailable,unavailable
-FPP,36,36,36,20388,19171,6.0,unavailable,unavailable
-Total,91,91,91,136594,117826,13.7,unavailable,unavailable
+HCT-standard,1,1,1,75373,64554,14.4,80.83,4.78
+HCT-binary-nat,1,1,1,74380,63668,14.4,84.07,3.81
+Unit,53,53,53,9420,8758,7.0,3.47,0.29
+FPP,36,36,36,19838,18491,6.8,2.98,0.62
+Cumulative total,91,91,91,179011,155471,13.2,171.35,9.50

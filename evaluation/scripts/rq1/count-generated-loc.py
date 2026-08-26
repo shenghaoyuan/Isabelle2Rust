@@ -4,8 +4,8 @@
 Only ``src/**/*.rs`` files from Isabelle-exported library crates are counted.
 The script rejects binary drivers, Rust tests, benchmarks, examples, and build
 scripts so a hand-written harness cannot silently enter the paper's KLOC.
-``cloc`` supplies the code count and therefore excludes comments and blank
-lines.
+The pinned ``rustfmt`` first normalizes temporary copies of both stages;
+``cloc`` then counts code lines, excluding comments and blank lines.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -65,7 +66,7 @@ def generated_crate(theory: Path, stage: str) -> Path:
 
 
 def cloc(roots: list[Path]) -> tuple[int, int]:
-    sources: list[Path] = []
+    sources_by_crate: list[tuple[Path, list[Path]]] = []
     forbidden_names = ("build.rs",)
     forbidden_dirs = ("benches", "examples", "test", "tests")
     for root in roots:
@@ -79,17 +80,46 @@ def cloc(roots: list[Path]) -> tuple[int, int]:
         for source in crate_sources:
             if RUST_TEST.search(source.read_text(encoding="utf-8", errors="replace")):
                 raise RuntimeError(f"Rust test item present in generated RQ1 source: {source}")
-        sources.extend(crate_sources)
+        sources_by_crate.append((root, crate_sources))
 
-    command = [
-        "cloc", "--json", "--quiet", "--skip-uniqueness", "--include-lang=Rust",
-        *map(str, sources),
-    ]
-    result = subprocess.run(command, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip())
-    rust = json.loads(result.stdout).get("Rust", {})
-    return int(rust.get("nFiles", 0)), int(rust.get("code", 0))
+    with tempfile.TemporaryDirectory(prefix="isabelle2rust-loc-") as temporary:
+        formatted_sources: list[Path] = []
+        temporary_root = Path(temporary)
+        for index, (crate, sources) in enumerate(sources_by_crate):
+            for source in sources:
+                target = temporary_root / f"crate-{index}" / source.relative_to(crate)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                text = source.read_text(encoding="utf-8")
+                normalized = "\n".join(line.rstrip() for line in text.splitlines())
+                if text.endswith(("\n", "\r")):
+                    normalized += "\n"
+                target.write_text(normalized, encoding="utf-8")
+                formatted_sources.append(target)
+
+        try:
+            formatted = subprocess.run(
+                [
+                    "rustfmt", "--edition", "2021", "--config", "skip_children=true",
+                    *map(str, formatted_sources),
+                ],
+                cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError("rustfmt not found; install the pinned rustfmt component") from error
+        if formatted.returncode != 0:
+            raise RuntimeError(formatted.stderr.strip())
+
+        command = [
+            "cloc", "--json", "--quiet", "--skip-uniqueness", "--include-lang=Rust",
+            *map(str, formatted_sources),
+        ]
+        result = subprocess.run(
+            command, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip())
+        rust = json.loads(result.stdout).get("Rust", {})
+        return int(rust.get("nFiles", 0)), int(rust.get("code", 0))
 
 
 def main() -> int:
