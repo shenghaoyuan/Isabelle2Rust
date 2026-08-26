@@ -1,8 +1,8 @@
 # Isabelle2Rust
 
 Isabelle2Rust generates safe Rust from executable Isabelle/HOL specifications.
-It uses a two-stage pipeline: Stage 1 translates Thingol programs into
-compiler-accepted Rust, and Stage 2 applies ownership-aware optimizations.
+Stage-1 translates Thingol into baseline Rust, and Stage-2 applies
+ownership-aware source-to-source optimizations.
 
 ## 1. Environment
 
@@ -55,18 +55,20 @@ and add its `bin` directory to `PATH`:
 tar -xzf Isabelle2025_linux.tar.gz -C /YOUR/PATH
 echo 'export PATH="/YOUR/PATH/Isabelle2025/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-isabelle version
+isabelle version  # Isabelle2025
 ```
 
-Install  [Rust](https://rust-lang.org/tools/install/):
+Install [Rust](https://rust-lang.org/tools/install/):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
-rustup toolchain install stable --profile minimal
-rustup component add clippy --toolchain stable
-rustc +stable --version
-cargo +stable --version
+rustup toolchain install 1.94.0 --profile minimal
+rustup component add clippy rustfmt --toolchain 1.94.0
+rustc +1.94.0 --version         # rustc 1.94.0
+cargo +1.94.0 --version         # cargo 1.94.0
+cargo +1.94.0 clippy --version  # clippy 0.1.94
+rustfmt +1.94.0 --version       # rustfmt 1.8.0
 ```
 
 Install OCaml for the SBPF and x86-64 experiments:
@@ -77,10 +79,10 @@ opam switch create isabelle2rust ocaml-base-compiler.4.11.2
 eval "$(opam env --switch=isabelle2rust)"
 opam install -y ocamlfind zarith yojson
 
-ocamlopt -version
-ocamlfind query zarith
-ocamlfind query yojson
-pkg-config --libs jansson
+ocamlopt -version             # 4.11.2
+ocamlfind query zarith        # path ending in /zarith
+ocamlfind query yojson        # path ending in /yojson
+pkg-config --libs jansson     # contains -ljansson
 ```
 
 Clone the two repositories into the required layout:
@@ -88,8 +90,11 @@ Clone the two repositories into the required layout:
 ```bash
 mkdir Isabelle2Rust-artifact
 cd Isabelle2Rust-artifact
+
 git clone https://github.com/OpenSourceVerif/RustLightAST.git
-git clone https://github.com/OpenSourceVerif/Isabelle2Rust.git
+git -C RustLightAST checkout bec5b614d70afbb67041e12d800f7a8c2be502cc
+
+git clone -b tosem-ae https://github.com/OpenSourceVerif/Isabelle2Rust.git
 cd Isabelle2Rust
 ```
 
@@ -98,10 +103,12 @@ cd Isabelle2Rust
 Run the complete two-stage pipeline on one Isabelle theory:
 
 ```bash
-make test DIR=test/unit/mapping Name=Lists_Test
+make test DIR=test/example Name=RBT_Test
 ```
 
-`DIR` contains the theory and `Name` is its filename without `.thy`. The command
+`RBT_Test` matches the red-black-tree running example in the paper overview.
+
+Here, `DIR` contains the theory and `Name` is its filename without `.thy`. The command
 generates and compiles the Stage-1 crate, applies Stage-2 optimization, and then
 compiles the Stage-2 crate. The generated crates are written to:
 
@@ -109,16 +116,14 @@ compiles the Stage-2 crate. The generated crates are written to:
 <DIR>/stage1/<Name>/export*/
 <DIR>/stage2/<Name>/export*/
 ```
-
 Omitting `Name` processes every `*_Test.thy` under `DIR`.
 
-## 5. Stage 1: Code Translation
+## 5. Stage-1: Code Translation
 
-Stage 1 translates Thingol programs into safe Rust Cargo crates using a
-conservative owned-and-clone discipline.
+Stage-1 performs a syntax-directed translation from Thingol to baseline Rust.
 
 ```bash
-make gen DIR=test/unit/mapping Name=Lists_Test
+make gen DIR=test/example Name=RBT_Test
 ```
 
 ### 5.1 Link to Paper
@@ -127,13 +132,13 @@ make gen DIR=test/unit/mapping Name=Lists_Test
 | --- | --- |
 | Code Translation (Section 4) | Core translator: [`translate/code_rust.ML`](translate/code_rust.ML); code adaptations: [`translate/Rust_Base_Setup.thy`](translate/Rust_Base_Setup.thy), [`translate/Rust_BigInt_Setup.thy`](translate/Rust_BigInt_Setup.thy), and [`translate/Rust_Checked128_Setup.thy`](translate/Rust_Checked128_Setup.thy) |
 
-## 6. Stage 2: Code Optimization
+## 6. Stage-2: Code Optimization
 
-Stage 2 analyzes the generated Rust program and applies source-to-source
-transformations that refine ownership and simplify program structure.
+Stage-2 applies ownership-aware source-to-source optimizations to the generated baseline
+Rust program.
 
 ```bash
-make opt DIR=test/unit/mapping Name=Lists_Test
+make opt DIR=test/example Name=RBT_Test
 ```
 
 This command applies the complete Stage-2 pipeline to an existing Stage-1
@@ -151,64 +156,83 @@ export.
 
 ## 7. Evaluation
 
-The commands in this section run complete evaluation workloads rather than
-quick smoke tests. Some paper-scale and RQ3 runs can take hours, depending on
-the machine.
+The following commands reproduce the complete evaluation. Experiments that may take several hours are noted below.
 
 ### 7.1 RQ1: Code-Generation Capability
 
-RQ1 uses three complementary test suites:
-
-- **HCT** is Isabelle/HOL's official library-scale code-generation stress test.
-- **Unit** exercises the translation and optimization rule families.
-- **FPP** evaluates their composition in program-level developments.
+We evaluate Isabelle2Rust using the rule-level Unit tests, the program-level FPP suite, and Isabelle/HOL's official library-scale HOL-Codegenerator_Test (HCT).
 
 ```bash
-make hol-stress
 make test DIR=test/unit
 make test DIR=test/fpp
+make hol-stress
+```
+
+The scripts for collecting the generated Rust LOC and phase times reported in Table 1 are:
+
+```bash
+# Count generated Rust LOC
+python3 evaluation/scripts/rq1/count-generated-loc.py
+
+# Measure translation and optimization times
+python3 evaluation/scripts/rq1/run-timings.py
 ```
 
 #### Link to Paper
 
 | Paper | Code |
 | --- | --- |
-| RQ1: Code-Generation Capability (Section 6) | HCT: [`test/HOL_Codegenerator/`](test/HOL_Codegenerator/); Unit: [`test/unit/`](test/unit/); FPP: [`test/fpp/`](test/fpp/); experiment scripts: [`evaluation/scripts/rq1/`](evaluation/scripts/rq1/) |
+| RQ1: Code-Generation Capability (Section 6) | HCT: [`test/HOL_Codegenerator/`](test/HOL_Codegenerator/); Unit: [`test/unit/`](test/unit/); FPP: [`test/fpp/`](test/fpp/); experiment scripts: [`evaluation/scripts/rq1/`](evaluation/scripts/rq1/); results: [`summary.csv`](evaluation/results/rq1/summary.csv) |
 
 ### 7.2 RQ2: Behavioral Consistency
 
-The SBPF experiments compare the generated Rust with the corresponding OCaml
-export and the Solana reference implementation.
+RQ2 uses differential testing at the program and instruction levels for SBPF and at the instruction level for x86-64.
+
+#### SBPF-program
+
+`make macro_sbpf` generates or reuses both Rust stages, then checks them and the OCaml export against native SBPF execution using 146 tests derived from Solana's official eBPF test suite.
 
 ```bash
-make micro_sbpf_gen X=100000
+# Run the 146 program-level tests
 make macro_sbpf
+# Success: each export reports Passed 146 / Failed 0 / Total 146,
+# followed by Overall: PASS.
+```
+
+#### SBPF-instruction
+
+`make micro_sbpf` generates or reuses both Rust stages, then checks them and the OCaml export against native SBPF execution using randomly generated instruction vectors. It uses 10,000 vectors by default; set `X` to change this number.
+
+```bash
+# Run 10,000 instruction-level tests
 make micro_sbpf
+# Run a custom number of tests
+make micro_sbpf X=100000
+# Success: each export reports Passed 10000 / Failed 0 / Total 10000
+# for the default run, followed by Overall: PASS. With X set, the totals equal X.
 ```
 
-On a clean checkout, the first SBPF or x64 validation run also builds the
-Isabelle exports and release binaries. `make macro_sbpf` has no per-case timeout
-by default, so an individual case may run for a long time; the runner prints the
-case name before starting it. For diagnosis, use
-`RUST_CASE_TIMEOUT=30 make macro_sbpf`; a timeout is reported as a failure.
-`make micro_sbpf` processes all 100,000 vectors generated above.
+#### x64-stepper
 
-The x86-64 experiments compare the generated stepper with the OCaml export and
-native x86-64 execution.
+`make x64` generates or reuses both Rust stages, then checks them and the OCaml export against native x86-64 execution using randomly generated instruction vectors. It uses 10,000 vectors by default; set `X` to change this number.
 
 ```bash
-make x64-gen
-make x64-test
+# Run 10,000 instruction-level tests
 make x64
+# Run a custom number of tests
+make x64 X=100000
+# Success: each export reports Passed 10000 / Failed 0 / Total 10000
+# for the default run, followed by Overall: PASS. With X set, the totals equal X.
 ```
 
-Subsystem-specific options are documented in the [SBPF validation guide](test/sbpf/README.md)
-and the [x86-64 validation guide](test/x64/x64-validation/README.md).
+Both SBPF and x86-64 reuse generated artifacts when the expected files are present and the relevant sources are unchanged. Set `REBUILD=1` to force regeneration.
 
-The paper-scale experiments run ten rounds of 100,000 test vectors:
+The following scripts run the complete two-stage differential-testing campaigns over ten rounds of 100,000 vectors and may take many hours:
 
 ```bash
+# Run the complete SBPF campaign
 evaluation/scripts/rq2/run-sbpf-10x100k.sh
+# Run the complete x86-64 campaign
 evaluation/scripts/rq2/run-x64-10x100k.sh
 ```
 
@@ -216,23 +240,55 @@ evaluation/scripts/rq2/run-x64-10x100k.sh
 
 | Paper | Code |
 | --- | --- |
-| SBPF (RQ2, Section 6) | Export declarations: [`bpf_generator_bigint.thy`](test/sbpf/theory/bpf_generator_bigint.thy#L13) and [`bpf_generator_checked128.thy`](test/sbpf/theory/bpf_generator_checked128.thy#L15); program-level runner: [`run_macro_sbpf.py`](test/sbpf/tests/exec_semantics/run_macro_sbpf.py#L225); instruction-level runner: [`run_micro_sbpf.py`](test/sbpf/tests/exec_semantics/run_micro_sbpf.py#L225) |
-| x86-64 semantics (RQ2, Section 6) | Formal model: [`test/x64/theory/`](test/x64/theory/); Rust export: [`run_rust_export.py`](test/x64/x64-validation/run_rust_export.py#L287); differential testing: [`run_rust_validation.py`](test/x64/x64-validation/run_rust_validation.py#L217) |
+| Generated-code LOC (RQ2, Section 6) | Script: [`count-generated-loc.py`](evaluation/scripts/rq2/count-generated-loc.py); results: [`generated-loc.csv`](evaluation/results/rq2/generated-loc.csv) |
+| SBPF (RQ2, Section 6) | Theory: [`test/sbpf/theory/`](test/sbpf/theory/); validation: [`run_macro_sbpf.py`](test/sbpf/tests/exec_semantics/run_macro_sbpf.py) and [`run_micro_sbpf.py`](test/sbpf/tests/exec_semantics/run_micro_sbpf.py); reproduction: [`run-sbpf-10x100k.sh`](evaluation/scripts/rq2/run-sbpf-10x100k.sh); results: [`evaluation/results/rq2/sbpf/`](evaluation/results/rq2/sbpf/) |
+| x86-64 semantics (RQ2, Section 6) | Theory: [`test/x64/theory/`](test/x64/theory/); validation: [`run_x64.py`](test/x64/x64-validation/run_x64.py); reproduction: [`run-x64-10x100k.sh`](evaluation/scripts/rq2/run-x64-10x100k.sh); results: [`evaluation/results/rq2/x64/`](evaluation/results/rq2/x64/) |
 
 ### 7.3 RQ3: Optimization Effectiveness
 
-RQ3 evaluates generated-code quality and the performance of `SBPF-program`,
-`SBPF-instruction`, and `x64-stepper`.
+RQ3 evaluates whether Stage-2 improves generated-code quality, runtime, and
+heap allocation.
+
+#### Code Quality
+
+The following command compares Clippy diagnostics across the Stage-1 and
+Stage-2 crates generated for the RQ1 test suites and RQ2 case studies.
 
 ```bash
 make rq3-clippy
-make rq3-sbpf
-make rq3-x64
+# Success: Recorded 93 crate pairs and 5900 -> 27 diagnostics in ...
 ```
+
+The generated summary is written to
+`evaluation/.work/rq3/code-quality/all/summary.csv`; the same directory also
+records the run environment in `environment.json`.
+
+#### Performance
+
+The performance experiments compare Stage-1, full Stage-2, the Last-Use and
+Borrow ablations, the Isabelle/HOL OCaml export, and the corresponding
+case-study baseline.
+
+```bash
+# Measure SBPF-program on 146 tests and SBPF-instruction on 6,000 vectors
+make rq3-sbpf
+# Success: RESULT_DIR=.../evaluation/.work/rq3/sbpf/runs/<timestamp>
+
+# Measure x64-stepper on 6,000 vectors
+make rq3-x64
+# Success: RESULT_DIR=.../evaluation/.work/rq3/x64/runs/<timestamp>
+```
+
+Each `RESULT_DIR` contains `environment.json`, an `experiment-record.md` with
+the correctness results, and a `summary.csv` with three runtime and
+heap-allocation measurements and their median. The paper reports the fixed
+results and environments under
+[`evaluation/results/rq3/`](evaluation/results/rq3/); rerun performance values
+may vary with the execution environment.
 
 #### Link to Paper
 
 | Paper | Code |
 | --- | --- |
-| Code-quality improvement (RQ3, Section 6) | [`evaluation/scripts/rq3/run-clippy.py`](evaluation/scripts/rq3/run-clippy.py#L264) |
-| Performance improvement (RQ3, Section 6) | SBPF: [`evaluation/scripts/rq3/run-sbpf.py`](evaluation/scripts/rq3/run-sbpf.py#L1251); X64: [`evaluation/scripts/rq3/run-x64.py`](evaluation/scripts/rq3/run-x64.py#L1225) |
+| Code-quality improvement (RQ3, Section 6) | Script: [`run-clippy.py`](evaluation/scripts/rq3/run-clippy.py); results: [`code-quality/`](evaluation/results/rq3/code-quality/) |
+| Performance improvement (RQ3, Section 6) | SBPF: [`run-sbpf.py`](evaluation/scripts/rq3/run-sbpf.py) and [`sbpf/`](evaluation/results/rq3/sbpf/); x86-64: [`run-x64.py`](evaluation/scripts/rq3/run-x64.py) and [`x64/`](evaluation/results/rq3/x64/) |
