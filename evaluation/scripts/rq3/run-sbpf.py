@@ -49,7 +49,6 @@ ADAPTED_EXPORTS = {
 }
 GENERATED_ROOT = ROOT / "test" / "sbpf" / "theory" / "performance"
 OPTIMIZER = ROOT / "optimize" / "target" / "release" / "cargo-opt"
-RUSTLIGHTAST = ROOT.parent / "RustLightAST"
 BASELINE = SBPF_HARNESS / "native"
 WORK = ROOT / "evaluation" / ".work" / "rq3" / "sbpf"
 BUILD = WORK / "build"
@@ -64,40 +63,22 @@ CASE_STUDY_REPETITIONS = {
 
 STAGES = {
     "Stage-1": ("stage1", [], False),
-    "Stage-2 minus Borrow": ("stage2-no-borrow", ["--disable-borrow"], False),
     "Stage-2 minus Last-Use": (
         "stage2-no-last-use",
         ["--disable-last-use"],
         True,
     ),
-    "Stage-2 minus Closure": (
-        "stage2-no-closure",
-        ["--disable-closure"],
-        True,
-    ),
+    "Stage-2 minus Borrow": ("stage2-no-borrow", ["--disable-borrow"], False),
     "Stage-2 Full": ("stage2-full", [], True),
-    "Stage-2 minus Copy": ("stage2-no-copy", ["--disable-copy"], True),
-    "Stage-2 minus Mut": ("stage2-no-mut", ["--disable-mut"], True),
-    "Stage-2 minus PreferOwned": (
-        "stage2-no-prefer-owned",
-        ["--disable-prefer-owned"],
-        True,
-    ),
 }
 
 STAGE2_IMPLEMENTATIONS = [
-    "Stage-2 minus Borrow",
     "Stage-2 minus Last-Use",
-    "Stage-2 minus Closure",
+    "Stage-2 minus Borrow",
     "Stage-2 Full",
 ]
 
 RUST_IMPLEMENTATIONS = ["Stage-1", *STAGE2_IMPLEMENTATIONS]
-DIAGNOSTIC_IMPLEMENTATIONS = [
-    "Stage-2 minus Copy",
-    "Stage-2 minus Mut",
-    "Stage-2 Full",
-]
 IMPLEMENTATIONS = [
     *RUST_IMPLEMENTATIONS,
     "OCaml baseline",
@@ -105,18 +86,9 @@ IMPLEMENTATIONS = [
 ]
 
 ABLATION_GROUPS = {
-    "Borrow": "Stage-2 minus Borrow",
     "Last-Use": "Stage-2 minus Last-Use",
-    "Closure": "Stage-2 minus Closure",
+    "Borrow": "Stage-2 minus Borrow",
 }
-
-DIAGNOSTIC_ABLATIONS = {
-    "Copy": "Stage-2 minus Copy",
-    "Mut": "Stage-2 minus Mut",
-}
-
-PREFER_OWNED_IMPLEMENTATIONS = ["Stage-2 minus PreferOwned", "Stage-2 Full"]
-PREFER_OWNED_ABLATIONS = {"PreferOwned": "Stage-2 minus PreferOwned"}
 
 STRUCTURAL_TRANSFORMATIONS = [
     "binding cleanup",
@@ -293,11 +265,6 @@ def write_stage_manifest(
             "last_use": optimized and "--disable-last-use" not in optimizer_flags,
             "closure": optimized and "--disable-closure" not in optimizer_flags,
         },
-        "borrow_policy": {
-            "prefer_owned": optimized
-            and "--disable-borrow" not in optimizer_flags
-            and "--disable-prefer-owned" not in optimizer_flags,
-        },
         "structural_transformations": {
             "enabled": optimized,
             "members": STRUCTURAL_TRANSFORMATIONS,
@@ -315,20 +282,10 @@ def write_stage_manifest(
     return manifest
 
 
-def generate_step_input() -> None:
-    execute(
-        [
-            "make",
-            "micro_sbpf_gen",
-            "X=6000",
-            f"SBPF_STEP_JSON={STEP_INPUT.relative_to(ROOT)}",
-            "SBPF_STEP_SEED=5984326",
-            "RUST_TOOLCHAIN=stable",
-        ]
-    )
+def validate_step_input() -> None:
     values = json.loads(STEP_INPUT.read_text(encoding="utf-8"))
     if len(values) != 6000:
-        raise RuntimeError(f"generated {len(values)} instruction vectors, expected 6000")
+        raise RuntimeError(f"{STEP_INPUT} contains {len(values)} vectors; 6000 required")
 
 
 def generate_exports(*, include_baseline: bool = True) -> None:
@@ -365,7 +322,7 @@ def prepare_generated(
 ) -> None:
     selected = set(implementations or RUST_IMPLEMENTATIONS)
     if any(implementation != "Stage-1" for implementation in selected):
-        execute(["cargo", "+stable", "build", "--release", "--locked"], cwd=ROOT / "optimize")
+        execute(["cargo", "+1.94.0", "build", "--release", "--locked"], cwd=ROOT / "optimize")
     source_hashes = {}
     for package, source_package in ADAPTED_EXPORTS.items():
         for source in sorted((source_package / "src").glob("*.rs")):
@@ -402,15 +359,12 @@ def prepare_generated(
                 stage_dir / package / "src" / "main.rs",
             )
             execute(
-                ["cargo", "+stable", "generate-lockfile", "--manifest-path", str(stage_dir / package / "Cargo.toml")]
+                ["cargo", "+1.94.0", "generate-lockfile", "--manifest-path", str(stage_dir / package / "Cargo.toml")]
             )
         configurations[implementation] = write_stage_manifest(
             stage_dir, implementation, optimizer_flags, source_hashes
         )
         configurations[implementation]["borrowed_adapter"] = borrowed
-        configurations[implementation]["prefer_owned_ablation_adapter"] = (
-            implementation == "Stage-2 minus PreferOwned"
-        )
 
 
 def build_generated(
@@ -430,8 +384,6 @@ def build_generated(
                 flags = []
                 if borrowed:
                     flags.append("--cfg sbpf_borrowed")
-                if implementation == "Stage-2 minus PreferOwned":
-                    flags.append("--cfg sbpf_no_prefer_owned")
                 if allocation:
                     flags.append("--cfg allocation_metrics")
                 target = package_dir / "target" / metric
@@ -439,7 +391,7 @@ def build_generated(
                 if flags:
                     env["RUSTFLAGS"] = " ".join(flags)
                 execute(
-                    ["cargo", "+stable", "build", "--release", "--locked"],
+                    ["cargo", "+1.94.0", "build", "--release", "--locked"],
                     cwd=package_dir,
                     env=env,
                 )
@@ -558,7 +510,7 @@ def build_case_study(configurations: dict[str, Any], binaries: dict[str, Any]) -
         env = {"CARGO_TARGET_DIR": str(target)}
         if allocation:
             env["RUSTFLAGS"] = "--cfg allocation_metrics"
-        execute(["cargo", "+stable", "build", "--release", "--locked"], cwd=BASELINE, env=env)
+        execute(["cargo", "+1.94.0", "build", "--release", "--locked"], cwd=BASELINE, env=env)
         for benchmark, name in (
             ("SBPF-program", "sbpf-program-baseline"),
             ("SBPF-instruction", "sbpf-instruction-baseline"),
@@ -640,18 +592,11 @@ def record_environment() -> dict[str, Any]:
     affinity = sorted(os.sched_getaffinity(0))
     environment = {
         "timestamp": datetime.now().astimezone().isoformat(),
-        "git_commit": output(["git", "rev-parse", "HEAD"]),
-        "git_status": output(["git", "status", "--short"]),
-        "rustlightast": {
-            "path": str(RUSTLIGHTAST),
-            "git_commit": output(["git", "-C", str(RUSTLIGHTAST), "rev-parse", "HEAD"]),
-            "git_status": output(["git", "-C", str(RUSTLIGHTAST), "status", "--short"]),
-        },
         "uname": output(["uname", "-a"]),
         "lscpu": output(["lscpu"]),
         "free_h": output(["free", "-h"]),
-        "rustc_stable": output(["rustc", "+stable", "--version", "--verbose"]),
-        "cargo_stable": output(["cargo", "+stable", "--version"]),
+        "rustc_stable": output(["rustc", "+1.94.0", "--version", "--verbose"]),
+        "cargo_stable": output(["cargo", "+1.94.0", "--version"]),
         "ocamlopt": output(["ocamlopt", "-version"]),
         "cpu_affinity_before": affinity,
         "measurement_cpu": int(CPU),
@@ -806,26 +751,6 @@ def pilot_benchmarks(
             repetitions[benchmark][implementation] = max(
                 1, math.ceil(RUNTIME_TARGET_SECONDS / elapsed)
             )
-        if all(
-            implementation in repetitions[benchmark]
-            for implementation in ("Stage-2 minus Closure", "Stage-2 Full")
-        ):
-            paired_repetitions = max(
-                repetitions[benchmark]["Stage-2 minus Closure"],
-                repetitions[benchmark]["Stage-2 Full"],
-            )
-            repetitions[benchmark]["Stage-2 minus Closure"] = paired_repetitions
-            repetitions[benchmark]["Stage-2 Full"] = paired_repetitions
-        if all(
-            implementation in repetitions[benchmark]
-            for implementation in PREFER_OWNED_IMPLEMENTATIONS
-        ):
-            paired_repetitions = max(
-                repetitions[benchmark][implementation]
-                for implementation in PREFER_OWNED_IMPLEMENTATIONS
-            )
-            for implementation in PREFER_OWNED_IMPLEMENTATIONS:
-                repetitions[benchmark][implementation] = paired_repetitions
     (RESULT_DIR / "suite_repetitions.json").write_text(
         json.dumps(repetitions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -845,32 +770,7 @@ def measure_all(
     input_hashes = {
         benchmark: environment["inputs"][benchmark]["sha256"] for benchmark in BENCHMARKS
     }
-    if selected == STAGE2_IMPLEMENTATIONS:
-        # Full and minus Closure form an adjacent counterbalanced block.
-        # Alternating their order limits first/second-position bias, while the
-        # within-round ratio limits round-wide frequency and background-load drift.
-        round_orders = [
-            [selected[3], selected[2], selected[0], selected[1]],
-            [selected[0], selected[1], selected[2], selected[3]],
-            [selected[1], selected[3], selected[2], selected[0]],
-        ]
-    elif selected == RUST_IMPLEMENTATIONS:
-        round_orders = [
-            [selected[4], selected[3], selected[0], selected[1], selected[2]],
-            [selected[1], selected[2], selected[3], selected[4], selected[0]],
-            [selected[0], selected[2], selected[1], selected[4], selected[3]],
-        ]
-    elif selected == DIAGNOSTIC_IMPLEMENTATIONS:
-        round_orders = [
-            [selected[2], selected[0], selected[1]],
-            [selected[0], selected[1], selected[2]],
-            [selected[1], selected[2], selected[0]],
-        ]
-    else:
-        round_orders = [
-            selected[offset:] + selected[:offset]
-            for offset in range(3)
-        ]
+    round_orders = [selected[offset:] + selected[:offset] for offset in range(3)]
     for run_id in range(1, 4):
         order = round_orders[run_id - 1]
         for benchmark in selected_benchmarks:
@@ -938,7 +838,6 @@ def measure_all(
 
 def summarize(
     rows: list[dict[str, Any]],
-    host_available: bool,
     implementations: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     summary: list[dict[str, Any]] = []
@@ -959,11 +858,10 @@ def summarize(
                 and row["metric"] == "allocation"
             ]
             runtime_values = [float(row["normalized_seconds"]) for row in runtime_rows]
-            rss_values = [int(row["peak_rss_kib"]) / 1024.0 for row in runtime_rows]
             if implementation == "Case-study baseline":
                 allocation_values = None
                 allocation_unit = (
-                    "MiB/case" if benchmark == "SBPF-program" else "KiB/step"
+                    "MiB/case" if benchmark == "SBPF-program" else "KiB/vector"
                 )
             elif benchmark == "SBPF-program":
                 allocation_values = [
@@ -971,18 +869,13 @@ def summarize(
                     for row in allocation_rows
                 ]
                 allocation_unit = "MiB/case"
-                instruction_unit = "instructions/case"
             else:
                 allocation_values = [
                     int(row["allocated_bytes"]) / int(row["logical_units"]) / 1024.0
                     for row in allocation_rows
                 ]
-                allocation_unit = "KiB/step"
-                instruction_unit = "instructions/step"
-            metrics = [
-                ("Median runtime", "s", runtime_values),
-                ("Peak RSS", "MiB", rss_values),
-            ]
+                allocation_unit = "KiB/vector"
+            metrics = [("Median runtime", "s", runtime_values)]
             for metric, unit, values in metrics:
                 summary.append(
                     {
@@ -1010,18 +903,6 @@ def summarize(
                         if allocation_values is None
                         else f"{statistics.median(allocation_values):.9f}"
                     ),
-                }
-            )
-            summary.append(
-                {
-                    "benchmark": benchmark,
-                    "implementation": implementation,
-                    "metric": "Host instructions",
-                    "unit": instruction_unit,
-                    "run_1": "TBD",
-                    "run_2": "TBD",
-                    "run_3": "TBD",
-                    "median": "TBD" if not host_available else "TBD",
                 }
             )
     fields = ["benchmark", "implementation", "metric", "unit", "run_1", "run_2", "run_3", "median"]
@@ -1096,7 +977,7 @@ def write_grouped_ablation_summary(
                 }
             )
     fields = list(paired[0])
-    with (RESULT_DIR / "grouped_ablation.csv").open(
+    with (RESULT_DIR / "ablation.csv").open(
         "w", newline="", encoding="utf-8"
     ) as destination:
         writer = csv.DictWriter(destination, fieldnames=fields, lineterminator="\n")
@@ -1112,26 +993,13 @@ def write_experiment_record(
     reused_from: Path | None = None,
     instruction_only: bool = False,
     rust_only: bool = False,
-    diagnostic: bool = False,
-    prefer_owned_ablation: bool = False,
     rust_refresh: bool = False,
     baseline_refresh: bool = False,
     ocaml_refresh: bool = False,
 ) -> None:
-    git_dirty = bool(environment["git_status"].strip())
-    paired_ablation = "PreferOwned" if prefer_owned_ablation else "Closure"
-    ablation_kind = "policy" if prefer_owned_ablation else "pass"
     lines = [
         "# RQ3 SBPF experiment record",
         "",
-        f"- Base Git commit: `{environment['git_commit']}`",
-        (
-            "- Git worktree: dirty at measurement time; `environment.json` records "
-            "the status, and the configuration and binary manifests record exact "
-            "optimizer, generated-source, and executable SHA-256 hashes."
-            if git_dirty
-            else "- Git worktree: clean at measurement time."
-        ),
         f"- Measurement CPU: `{environment['measurement_cpu']}`",
         f"- SBPF-program input SHA-256: `{environment['inputs']['SBPF-program']['sha256']}`",
         f"- SBPF-instruction input SHA-256: `{environment['inputs']['SBPF-instruction']['sha256']}`",
@@ -1139,17 +1007,10 @@ def write_experiment_record(
         "WordU128 layer and Checked128 Int/Nat profile; the OCaml baseline uses the fixed "
         "default export of the same Isabelle/HOL semantics.",
         (
-            f"- Correctness: all {len(DIAGNOSTIC_IMPLEMENTATIONS)} diagnostic "
-            "generated-Rust configurations passed 146/146 SBPF-program cases "
-            "and 6000/6000 SBPF-instruction vectors."
-            if diagnostic
-            else "- Correctness: both PreferOwned configurations passed "
-            "146/146 SBPF-program cases and 6000/6000 SBPF-instruction vectors."
-            if prefer_owned_ablation
-            else "- Correctness: all five generated-Rust configurations passed "
+            "- Correctness: all four generated-Rust configurations passed "
             "146/146 SBPF-program cases and 6000/6000 SBPF-instruction vectors."
             if rust_only
-            else "- Correctness: the five regenerated Rust implementations passed "
+            else "- Correctness: the four regenerated Rust implementations passed "
             "146/146 SBPF-program cases and 6000/6000 SBPF-instruction vectors; "
             f"the unchanged OCaml and case-study baselines were reused from `{reused_from}`."
             if rust_refresh
@@ -1161,33 +1022,24 @@ def write_experiment_record(
             "146/146 SBPF-program cases and 6000/6000 SBPF-instruction vectors; "
             f"all generated-semantics and case-study rows were reused from `{reused_from}`."
             if ocaml_refresh
-            else "- Correctness: the four newly measured Stage-2 SBPF-instruction implementations "
+            else "- Correctness: the three newly measured Stage-2 SBPF-instruction implementations "
             "passed 6000/6000 vectors; the unchanged SBPF-program, Stage-1, OCaml, and "
             "case-study rows were reused from "
             f"`{reused_from}`."
             if instruction_only
             else
-            "- Correctness: the four regenerated Stage-2 implementations passed "
+            "- Correctness: the three regenerated Stage-2 implementations passed "
             "146/146 SBPF-program cases and 6000/6000 SBPF-instruction vectors; "
             f"the unchanged Stage-1, OCaml, and case-study baselines were reused from `{reused_from}`."
             if reused_from
-            else "- Correctness: all seven SBPF-program implementations passed 146/146 cases; "
-            "all seven SBPF-instruction implementations passed 6000/6000 vectors."
+            else "- Correctness: all six SBPF-program implementations passed 146/146 cases; "
+            "all six SBPF-instruction implementations passed 6000/6000 vectors."
         ),
-        f"- Each value below is from an independent pinned process. Generated and OCaml pilots select whole-suite repetition counts targeting approximately {RUNTIME_TARGET_SECONDS:.0f} seconds. The prepared Solana baseline retains its historical configuration of {CASE_STUDY_REPETITIONS['SBPF-program']} SBPF-program suites and {CASE_STUDY_REPETITIONS['SBPF-instruction']} SBPF-instruction suite per process; every VM is independently constructed before measurement and executed once. Full and minus {paired_ablation} use the larger of their two pilot repetition counts and run adjacently with alternating order. Every ablation effect is the ratio of the minus-{ablation_kind} and Full configuration medians. Reused rows retain their recorded protocol. Each allocation round uses one complete suite. Runtime results are normalized per suite.",
+        f"- Each value below is from an independent pinned process. Generated and OCaml pilots select whole-suite repetition counts targeting approximately {RUNTIME_TARGET_SECONDS:.0f} seconds. The prepared Solana baseline retains its historical configuration of {CASE_STUDY_REPETITIONS['SBPF-program']} SBPF-program suites and {CASE_STUDY_REPETITIONS['SBPF-instruction']} SBPF-instruction suite per process; every VM is independently constructed before measurement and executed once. Every ablation effect is the ratio of the ablated and Full configuration medians. Reused rows retain their recorded protocol. Each allocation round uses one complete suite. Runtime results are normalized per suite.",
         "- OCaml runtime uses `clock_gettime(CLOCK_MONOTONIC)` through a C stub.",
         "",
     ]
-    lines.extend(
-        [
-            "## Diagnostic Stage-2 pass ablations"
-            if diagnostic
-            else "## PreferOwned ablation"
-            if prefer_owned_ablation
-            else "## Paper-facing Stage-2 ablations",
-            "",
-        ]
-    )
+    lines.extend(["## Paper-facing Stage-2 ablations", ""])
     for row in grouped_ablation:
         lines.append(
             f"- {row['benchmark']} / {row['ablated_group']}: minus/Full ratios "
@@ -1197,20 +1049,9 @@ def write_experiment_record(
             f"Full wins {row['full_wins']}/3)."
         )
     lines.append("")
-    host = environment["host_instructions"]
-    if not host["available"]:
-        lines.extend(
-            [
-                "Host instructions are `TBD`. The direct "
-                f"`{host['syscall']}` probe failed with errno {host['errno']} "
-                f"(`{host['error']}`), `perf_event_paranoid={host['perf_event_paranoid']}`, "
-                "and no compatible `perf` executable was installed. No estimate was substituted.",
-                "",
-            ]
-        )
     for benchmark in BENCHMARKS:
         lines.extend([f"## {benchmark}", ""])
-        for metric in ("Median runtime", "Peak RSS", "Heap allocation", "Host instructions"):
+        for metric in ("Median runtime", "Heap allocation"):
             values = [
                 row
                 for row in summary
@@ -1235,11 +1076,11 @@ def write_experiment_record(
         [
             "## Artifacts",
             "",
-            "- `environment.json`: host, toolchains, affinity, inputs, and counter probe.",
+            "- `environment.json`: host, toolchains, affinity, and inputs.",
             "- `configurations.json`: pass matrix, source hashes, build settings, and executable hashes.",
             "- `raw.csv`: one row per formal measurement process.",
             "- `summary.csv`: the three values and median for every table cell.",
-            "- `grouped_ablation.csv`: within-round minus-group/Full ratios and the ratio of the configuration medians.",
+            "- `ablation.csv`: within-round minus-group/Full ratios and the ratio of the configuration medians.",
             "- `commands.txt`: every actual preparation, build, validation, pilot, and measurement command.",
             "- `correctness/`, `pilot/`, and `runs/`: per-process stdout, stderr, and `/usr/bin/time -v` output.",
             "",
@@ -1255,12 +1096,12 @@ def main() -> int:
     parser.add_argument(
         "--stage2-only-from",
         type=Path,
-        help="reuse unchanged Stage-1/OCaml/case-study rows and rebuild the four paper-facing Stage-2 configurations",
+        help="reuse unchanged Stage-1/OCaml/case-study rows and rebuild the three paper-facing Stage-2 configurations",
     )
     parser.add_argument(
         "--rust-from",
         type=Path,
-        help="regenerate and remeasure all five Rust configurations while reusing only OCaml/case-study baseline rows",
+        help="regenerate and remeasure all four Rust configurations while reusing only OCaml/case-study baseline rows",
     )
     parser.add_argument(
         "--baseline-only-from",
@@ -1280,17 +1121,7 @@ def main() -> int:
     parser.add_argument(
         "--rust-only",
         action="store_true",
-        help="measure only the five generated-Rust paper configurations",
-    )
-    parser.add_argument(
-        "--diagnostic",
-        action="store_true",
-        help="explicitly run only Stage-2 minus Copy, minus Mut, and Full",
-    )
-    parser.add_argument(
-        "--prefer-owned-ablation",
-        action="store_true",
-        help="measure only Stage-2 minus PreferOwned and Stage-2 Full",
+        help="measure only the four generated-Rust paper configurations",
     )
     parser.add_argument(
         "--reuse-stage1-exports",
@@ -1315,21 +1146,6 @@ def main() -> int:
             "--resume, --stage2-only-from, --instruction-only-from, --rust-from, and "
             "--baseline-only-from, and --ocaml-only-from are mutually exclusive"
         )
-    if (args.diagnostic or args.prefer_owned_ablation) and (
-        args.resume
-        or args.stage2_only_from
-        or args.instruction_only_from
-        or args.rust_from
-        or args.baseline_only_from
-        or args.ocaml_only_from
-        or args.rust_only
-    ):
-        parser.error(
-            "targeted ablation modes cannot be combined with --resume, reuse modes, or --rust-only"
-        )
-    if args.diagnostic and args.prefer_owned_ablation:
-        parser.error("--diagnostic and --prefer-owned-ablation are mutually exclusive")
-
     reused_from: Path | None = None
     instruction_only = args.instruction_only_from is not None
     rust_refresh = args.rust_from is not None
@@ -1351,6 +1167,7 @@ def main() -> int:
         timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S%z")
         RESULT_DIR = RESULTS / timestamp
         RESULT_DIR.mkdir(parents=True)
+        validate_step_input()
         reused_from = (
             args.rust_from.resolve()
             if args.rust_from
@@ -1367,7 +1184,6 @@ def main() -> int:
         if reused_from is None:
             if not args.reuse_stage1_exports:
                 generate_exports()
-            generate_step_input()
         elif rust_refresh and not args.reuse_stage1_exports:
             generate_exports(include_baseline=False)
         environment = record_environment()
@@ -1456,39 +1272,17 @@ def main() -> int:
             prepare_generated(configurations, regenerated)
             build_generated(configurations, binaries, regenerated)
         else:
-            selected_rust = (
-                PREFER_OWNED_IMPLEMENTATIONS
-                if args.prefer_owned_ablation
-                else DIAGNOSTIC_IMPLEMENTATIONS
-                if args.diagnostic
-                else RUST_IMPLEMENTATIONS
-            )
+            selected_rust = RUST_IMPLEMENTATIONS
             configurations = {
                 "matrix_order": (
-                    PREFER_OWNED_IMPLEMENTATIONS
-                    if args.prefer_owned_ablation
-                    else DIAGNOSTIC_IMPLEMENTATIONS
-                    if args.diagnostic
-                    else RUST_IMPLEMENTATIONS
-                    if args.rust_only
-                    else IMPLEMENTATIONS
+                    RUST_IMPLEMENTATIONS if args.rust_only else IMPLEMENTATIONS
                 ),
-                "available_pass_level_ablations": [
-                    "Copy",
-                    "Borrow",
-                    "Mut",
-                    "Last-Use",
-                    "Closure",
-                ],
-                "available_policy_ablations": ["PreferOwned"],
-                "paper_facing_ablations": ["Borrow", "Last-Use", "Closure"],
-                "diagnostic_mode": args.diagnostic,
-                "prefer_owned_ablation": args.prefer_owned_ablation,
+                "paper_facing_ablations": ["Borrow", "Last-Use"],
                 "numeric_representation": (
                     "Rust WordU128 layer plus Checked128 Int/Nat profile for Stage-1 and every "
                     "Stage-2 configuration; fixed default OCaml export for the OCaml baseline"
                 ),
-                "rust_build": "cargo +stable build --release --locked",
+                "rust_build": "cargo +1.94.0 build --release --locked",
                 "allocation_rule": (
                     "Successful alloc and alloc_zeroed add layout.size(); successful realloc adds "
                     "new_size; dealloc subtracts nothing. The counter is reset immediately before "
@@ -1498,7 +1292,7 @@ def main() -> int:
             binaries = {}
             prepare_generated(configurations, selected_rust)
             build_generated(configurations, binaries, selected_rust)
-            if not args.rust_only and not args.diagnostic and not args.prefer_owned_ablation:
+            if not args.rust_only:
                 build_ocaml(configurations, binaries)
                 build_case_study(configurations, binaries)
         (RESULT_DIR / "configurations.json").write_text(
@@ -1512,11 +1306,7 @@ def main() -> int:
             return 0
 
     selected = (
-        PREFER_OWNED_IMPLEMENTATIONS
-        if args.prefer_owned_ablation
-        else DIAGNOSTIC_IMPLEMENTATIONS
-        if args.diagnostic
-        else RUST_IMPLEMENTATIONS
+        RUST_IMPLEMENTATIONS
         if args.rust_only
         else ["Case-study baseline"]
         if baseline_refresh
@@ -1565,22 +1355,8 @@ def main() -> int:
             ]
         rows = baseline_rows + rows
         write_raw(rows)
-    summary = summarize(
-        rows,
-        environment["host_instructions"]["available"],
-        selected
-        if (args.rust_only or args.diagnostic or args.prefer_owned_ablation)
-        and reused_from is None
-        else None,
-    )
-    grouped_ablation = write_grouped_ablation_summary(
-        rows,
-        PREFER_OWNED_ABLATIONS
-        if args.prefer_owned_ablation
-        else DIAGNOSTIC_ABLATIONS
-        if args.diagnostic
-        else ABLATION_GROUPS,
-    )
+    summary = summarize(rows, selected if args.rust_only and reused_from is None else None)
+    grouped_ablation = write_grouped_ablation_summary(rows, ABLATION_GROUPS)
     write_experiment_record(
         summary,
         grouped_ablation,
@@ -1588,8 +1364,6 @@ def main() -> int:
         reused_from,
         instruction_only,
         args.rust_only,
-        args.diagnostic,
-        args.prefer_owned_ablation,
         rust_refresh,
         baseline_refresh,
         ocaml_refresh,

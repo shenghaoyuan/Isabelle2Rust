@@ -134,10 +134,6 @@ def selected_jobs(scope: str) -> list[tuple[str, str, str, Path]]:
     return jobs
 
 
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -203,7 +199,7 @@ def audit_one(
 
     result = run(
         [
-            "cargo", "+stable", "clippy", "--quiet", "--locked", "--color", "never",
+            "cargo", "+1.94.0", "clippy", "--quiet", "--locked", "--color", "never",
             "--jobs", str(cargo_jobs), "--manifest-path", str(manifest), "--message-format=json",
             "--", "-W", "clippy::all",
         ],
@@ -381,15 +377,11 @@ def main() -> int:
     write_csv(output / "summary.csv", ["lint", "stage1", "stage2", "reduction_percent"], summary_rows)
     write_csv(output / "by-scope.csv", ["group", "stage", "crates", "failed_crates", "diagnostics"], by_scope_rows)
 
-    git_status = run(["git", "status", "--short"]).stdout
     metadata = {
         "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "git_commit": run(["git", "rev-parse", "HEAD"]).stdout.strip(),
-        "git_clean": not bool(git_status),
-        "git_status_sha256": sha256_bytes(git_status.encode()),
-        "rustc": run(["rustc", "+stable", "-Vv"]).stdout.strip(),
-        "cargo": run(["cargo", "+stable", "-V"]).stdout.strip(),
-        "clippy": run(["cargo", "+stable", "clippy", "-V"]).stdout.strip(),
+        "rustc": run(["rustc", "+1.94.0", "-Vv"]).stdout.strip(),
+        "cargo": run(["cargo", "+1.94.0", "-V"]).stdout.strip(),
+        "clippy": run(["cargo", "+1.94.0", "clippy", "-V"]).stdout.strip(),
         "scope": args.scope,
         "stages": list(STAGES),
         "crate_counts": {stage: sum(row["stage"] == stage for row in corpus_rows) for stage in STAGES},
