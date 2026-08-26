@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Count Stage-1 and Stage-2 generated Rust LOC for the RQ2 workloads."""
+"""Count normalized Stage-1 and Stage-2 generated Rust LOC for RQ2."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -47,17 +48,44 @@ def cloc(root: Path) -> tuple[int, int]:
     for source in sources:
         if RUST_TEST.search(source.read_text(encoding="utf-8", errors="replace")):
             raise RuntimeError(f"Rust test item present in generated source: {source.relative_to(REPO)}")
-    result = subprocess.run(
-        [
-            "cloc", "--json", "--quiet", "--skip-uniqueness", "--include-lang=Rust",
-            *map(str, sources),
-        ],
-        cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip())
-    rust = json.loads(result.stdout).get("Rust", {})
-    return int(rust.get("nFiles", 0)), int(rust.get("code", 0))
+
+    with tempfile.TemporaryDirectory(prefix="isabelle2rust-loc-") as temporary:
+        temporary_root = Path(temporary)
+        formatted_sources = []
+        for source in sources:
+            target = temporary_root / source.relative_to(root)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            text = source.read_text(encoding="utf-8")
+            normalized = "\n".join(line.rstrip() for line in text.splitlines())
+            if text.endswith(("\n", "\r")):
+                normalized += "\n"
+            target.write_text(normalized, encoding="utf-8")
+            formatted_sources.append(target)
+
+        try:
+            formatted = subprocess.run(
+                [
+                    "rustfmt", "--edition", "2021", "--config", "skip_children=true",
+                    *map(str, formatted_sources),
+                ],
+                cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError("rustfmt not found; install the pinned rustfmt component") from error
+        if formatted.returncode != 0:
+            raise RuntimeError(formatted.stderr.strip())
+
+        result = subprocess.run(
+            [
+                "cloc", "--json", "--quiet", "--skip-uniqueness", "--include-lang=Rust",
+                *map(str, formatted_sources),
+            ],
+            cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip())
+        rust = json.loads(result.stdout).get("Rust", {})
+        return int(rust.get("nFiles", 0)), int(rust.get("code", 0))
 
 
 def main() -> int:
