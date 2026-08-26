@@ -2,9 +2,9 @@
 """Shared SBPF micro-validation orchestration.
 
 This script owns the language-independent instruction-level path:
-  1. ensure the BigInt profile is exported from Isabelle,
-  2. optionally generate random step-test vectors,
-  3. run the OCaml and Rust language-specific step runners,
+  1. ensure the BigInt profile is available at Stage 1 and Stage 2,
+  2. generate random step-test vectors unless an existing data file is supplied,
+  3. run the OCaml, Stage-1 Rust, and Stage-2 Rust step runners,
   4. print one combined statistical summary.
 """
 
@@ -16,6 +16,8 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from sbpf_exports import ensure_two_stage_exports
 
 
 @dataclass
@@ -38,12 +40,18 @@ EXEC_DIR = ROOT / "test" / "sbpf" / "tests" / "exec_semantics"
 DATA_DIR = ROOT / "test" / "sbpf" / "tests" / "data"
 BASELINE_THEORY = "bpf_generator_bigint"
 THEORY = os.environ.get("SBPF_THEORY") or "bpf_generator_bigint"
-EXPORT_DIR = Path(
+STAGE1_EXPORT_DIR = Path(
     os.environ.get("SBPF_EXPORT_DIR")
     or ROOT / "test" / "sbpf" / "theory" / "stage1" / THEORY
 )
-if not EXPORT_DIR.is_absolute():
-    EXPORT_DIR = ROOT / EXPORT_DIR
+if not STAGE1_EXPORT_DIR.is_absolute():
+    STAGE1_EXPORT_DIR = ROOT / STAGE1_EXPORT_DIR
+STAGE2_EXPORT_DIR = Path(
+    os.environ.get("SBPF_STAGE2_EXPORT_DIR")
+    or ROOT / "test" / "sbpf" / "theory" / "stage2" / THEORY
+)
+if not STAGE2_EXPORT_DIR.is_absolute():
+    STAGE2_EXPORT_DIR = ROOT / STAGE2_EXPORT_DIR
 OCAML_EXPORT_DIR = ROOT / "test" / "sbpf" / "theory" / "stage1" / BASELINE_THEORY
 STEP_JSON = Path(os.environ.get("SBPF_STEP_JSON") or DATA_DIR / "ocaml_in.json")
 if not STEP_JSON.is_absolute():
@@ -104,66 +112,14 @@ def parse_summary(name: str, rc: int, output: str, note: str = "") -> StageResul
     return StageResult(name, int(passed_match[-1]), int(failed_match[-1]), rc, note)
 
 
-def export_outputs() -> list[Path]:
-    return [
-        OCAML_EXPORT_DIR / "step_test.ocaml",
-        EXPORT_DIR / "step_test" / "Cargo.toml",
-    ]
-
-
-def build_isabelle_export(theory: str, reason: str) -> bool:
-    announce("Isabelle export", f"building {theory} ({reason})")
-    rc, _ = run_command(
-        ["make", "build", "TEST_DIR=test/sbpf/theory", f"TEST_THEORY={theory}"],
-        cwd=ROOT,
-    )
-    return rc == 0
-
-
-def ensure_isabelle_export() -> bool:
-    ocaml_export = OCAML_EXPORT_DIR / "step_test.ocaml"
-    rust_manifest = EXPORT_DIR / "step_test" / "Cargo.toml"
-    force_rebuild = os.environ.get("REBUILD") == "1"
-    baseline_built = False
-
-    if not ocaml_export.exists():
-        if not build_isabelle_export(
-            BASELINE_THEORY, f"missing fixed OCaml baseline {rel(ocaml_export)}"
-        ):
-            return False
-        baseline_built = True
-
-    target_built_with_baseline = (
-        baseline_built
-        and THEORY == BASELINE_THEORY
-        and EXPORT_DIR == OCAML_EXPORT_DIR
-    )
-    target_built = target_built_with_baseline
-    if (force_rebuild or not rust_manifest.exists()) and not target_built_with_baseline:
-        reason = "REBUILD=1" if force_rebuild else f"missing {rel(rust_manifest)}"
-        if not build_isabelle_export(THEORY, reason):
-            return False
-        target_built = True
-
-    missing = [path for path in export_outputs() if not path.exists()]
-    if not missing and not force_rebuild and not baseline_built and not target_built:
-        announce("Isabelle export", f"reusing {rel(EXPORT_DIR)}")
-
-    if missing:
-        for path in missing:
-            print(f"ERROR: expected Isabelle export not found: {rel(path)}")
-        return False
-    return True
-
-
 def generate_step_json() -> int:
-    count = os.environ.get("X") or os.environ.get("num") or "100"
+    count = os.environ.get("X") or os.environ.get("num") or "10000"
     seed = os.environ.get("SBPF_STEP_SEED") or "5984326"
     announce(
         "generator",
         f"generating {count} random step cases with seed {seed} into {rel(STEP_JSON)}",
     )
-    rust_toolchain = os.environ.get("RUST_TOOLCHAIN") or "stable"
+    rust_toolchain = os.environ.get("RUST_TOOLCHAIN") or "1.94.0"
     env = os.environ.copy()
     env.pop("RUSTC_BOOTSTRAP", None)
     rc, _ = run_command(
@@ -174,7 +130,13 @@ def generate_step_json() -> int:
     return rc
 
 
-def run_stage(name: str, script: Path, export_dir: Path) -> StageResult:
+def run_stage(
+    name: str,
+    script: Path,
+    export_dir: Path,
+    *,
+    rust_stage: int | None = None,
+) -> StageResult:
     env = os.environ.copy()
     env.pop("RUSTC_BOOTSTRAP", None)
     env["SBPF_ROOT"] = str(ROOT)
@@ -182,6 +144,8 @@ def run_stage(name: str, script: Path, export_dir: Path) -> StageResult:
     env["SBPF_DATA_DIR"] = str(DATA_DIR)
     env["SBPF_EXPORT_DIR"] = str(export_dir)
     env["SBPF_STEP_JSON"] = str(STEP_JSON)
+    if rust_stage is not None:
+        env["SBPF_STAGE"] = str(rust_stage)
 
     announce(name, f"running {rel(script)}")
     rc, output = run_command(["python3", str(script)], cwd=ROOT, env=env)
@@ -212,9 +176,26 @@ def print_final_summary(results: list[StageResult]) -> None:
 
 
 def run_micro() -> int:
-    if not ensure_isabelle_export():
-        print_final_summary([StageResult("Isabelle export", None, None, 1, "generation failed")])
+    if not ensure_two_stage_exports(
+        root=ROOT,
+        theory=THEORY,
+        baseline_theory=BASELINE_THEORY,
+        stage1_dir=STAGE1_EXPORT_DIR,
+        stage2_dir=STAGE2_EXPORT_DIR,
+        ocaml_dir=OCAML_EXPORT_DIR,
+        force_rebuild=os.environ.get("REBUILD") == "1",
+        announce=announce,
+        run_command=run_command,
+    ):
+        print_final_summary([StageResult("two-stage export", None, None, 1, "generation failed")])
         return 1
+
+    supplied_data = bool(os.environ.get("SBPF_STEP_JSON"))
+    requested_count = bool(os.environ.get("X") or os.environ.get("num"))
+    if not supplied_data or requested_count:
+        if generate_step_json() != 0:
+            print_final_summary([StageResult("test data", None, None, 1, "generation failed")])
+            return 1
 
     if not STEP_JSON.exists():
         print_final_summary([StageResult("shared data", None, None, 1, f"missing {rel(STEP_JSON)}")])
@@ -222,7 +203,8 @@ def run_micro() -> int:
 
     results = [
         run_stage("OCaml export", OCAML_RUNNER, OCAML_EXPORT_DIR),
-        run_stage("Rust export", RUST_RUNNER, EXPORT_DIR),
+        run_stage("Stage-1 Rust export", RUST_RUNNER, STAGE1_EXPORT_DIR, rust_stage=1),
+        run_stage("Stage-2 Rust export", RUST_RUNNER, STAGE2_EXPORT_DIR, rust_stage=2),
     ]
     print_final_summary(results)
 

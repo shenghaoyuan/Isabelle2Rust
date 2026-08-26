@@ -26,8 +26,8 @@ EXPORT_DIR = Path(
 STEP_JSON = Path(os.environ.get("SBPF_STEP_JSON", DATA_DIR / "ocaml_in.json"))
 RUST_DIR = EXEC_DIR / "sbpf_rust"
 
-RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "stable")
-GLUE_VERSION = "step-micro-rust-stable-v1"
+RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "1.94.0")
+GLUE_VERSION = "step-micro-rust-stable-v2"
 
 
 def rel(path: Path) -> str:
@@ -98,17 +98,11 @@ def prepare_rust_cargo(toml: Path) -> None:
     text = ensure_dependency(text, "serde_json", '"1.0"')
     toml.write_text(text, encoding="utf-8")
 
-    lock_src = ROOT / "scripts" / "isabelle-exported.Cargo.lock"
+    lock_src = ROOT / "scripts" / "isabelle-validation.Cargo.lock"
     lock_dst = toml.parent / "Cargo.lock"
-    if lock_src.exists() and not lock_dst.exists():
-        shutil.copy2(lock_src, lock_dst)
-
-
-def lock_has_step_deps(lock: Path) -> bool:
-    if not lock.exists():
-        return False
-    text = lock.read_text(encoding="utf-8")
-    return 'name = "serde"' in text and 'name = "serde_json"' in text
+    if not lock_src.exists():
+        raise FileNotFoundError(f"missing validation lockfile: {lock_src}")
+    shutil.copy2(lock_src, lock_dst)
 
 
 def file_sha256(path: Path) -> str:
@@ -179,13 +173,6 @@ def main() -> int:
         announce("glue", f"installing {rel(main_rs)} into {rel(pkg_dir / 'src' / 'main.rs')}")
         shutil.copy2(main_rs, pkg_dir / "src" / "main.rs")
         prepare_rust_cargo(toml)
-        lock = toml.parent / "Cargo.lock"
-        if not lock_has_step_deps(lock):
-            lock_cmd = cargo + ["generate-lockfile", "--manifest-path", str(toml)]
-            announce("lockfile", shlex.join(lock_cmd))
-            rc, _ = run_command(lock_cmd, cwd=ROOT, env=env)
-            if rc != 0:
-                return rc
         build_cmd = cargo + ["build", "--release", "--locked", "-q", "--manifest-path", str(toml)]
         announce("build", shlex.join(build_cmd))
         rc, _ = run_command(build_cmd, cwd=ROOT, env=env)
@@ -202,14 +189,6 @@ def main() -> int:
         announce("glue", f"installing {rel(main_rs)} into {rel(pkg_dir / 'src' / 'main.rs')}")
         shutil.copy2(main_rs, pkg_dir / "src" / "main.rs")
         prepare_rust_cargo(toml)
-
-        lock = toml.parent / "Cargo.lock"
-        if not lock_has_step_deps(lock):
-            lock_cmd = cargo + ["generate-lockfile", "--manifest-path", str(toml)]
-            announce("lockfile", shlex.join(lock_cmd))
-            rc, _ = run_command(lock_cmd, cwd=ROOT, env=env)
-            if rc != 0:
-                return rc
 
         build_cmd = cargo + ["build", "--release", "--locked", "-q", "--manifest-path", str(toml)]
         announce("build", shlex.join(build_cmd))

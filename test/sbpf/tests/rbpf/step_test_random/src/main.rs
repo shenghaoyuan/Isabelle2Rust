@@ -72,7 +72,7 @@ fn assemble_to_bytecode(assembly_code: &str) -> Result<Vec<u8>, String> {
     Ok(program.to_vec())
 }
 
-fn generate_and_process_test_cases(num_cases: usize, seed: u64) -> Vec<TestCase> {
+fn generate_and_process_test_cases(num_cases: usize, seed: Option<u64>) -> Vec<TestCase> {
 
     //let MM_INPUT_START::u64 = 0x400000000;
     let instruction_sets = [
@@ -173,7 +173,7 @@ fn generate_and_process_test_cases(num_cases: usize, seed: u64) -> Vec<TestCase>
         },
     ];
 
-    let mut rng = StdRng::seed_from_u64(seed);
+    let mut rng = seed.map_or_else(StdRng::from_entropy, StdRng::seed_from_u64);
 
     let mut test_cases = Vec::new();
 
@@ -396,8 +396,9 @@ fn main() -> std::io::Result<()> {
         .get(2)
         .map(String::as_str)
         .unwrap_or("../../data/ocaml_in.json");
-    let seed = args.get(3).map_or(0x5B_50_46_u64, |x| {
-        x.parse::<u64>().unwrap_or(0x5B_50_46_u64)
+    let seed = args.get(3).map(|x| {
+        x.parse::<u64>()
+            .unwrap_or_else(|_| panic!("invalid random seed: {}", x))
     });
     let test_cases = generate_and_process_test_cases(num_test_cases, seed);
 
@@ -414,11 +415,19 @@ fn main() -> std::io::Result<()> {
 
     serde_json::to_writer_pretty(writer, &test_cases)?;
 
-    println!(
-        "Successfully generated {} random test cases with seed {} into {}.",
-        test_cases.len(),
-        seed,
-        output_path
-    );
+    if let Some(seed) = seed {
+        println!(
+            "Successfully generated {} random test cases with seed {} into {}.",
+            test_cases.len(),
+            seed,
+            output_path
+        );
+    } else {
+        println!(
+            "Successfully generated {} random test cases into {}.",
+            test_cases.len(),
+            output_path
+        );
+    }
     Ok(())
 }
