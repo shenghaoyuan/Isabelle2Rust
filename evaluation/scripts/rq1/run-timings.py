@@ -268,7 +268,7 @@ def translation_round(
 def build_optimizer(result_dir: Path) -> None:
     run_logged(
         [
-            "cargo", "+stable", "build", "--release", "--locked",
+            "cargo", "+1.94.0", "build", "--release", "--locked",
             "--manifest-path", str(REPO / "optimize" / "Cargo.toml"),
             "--bin", "cargo-opt",
         ],
@@ -435,7 +435,7 @@ def main() -> int:
                 "sub_millisecond_translation": "Isabelle suppresses command timing when elapsed, CPU, and GC are all below 1 ms; such successful cases are recorded as zero and marked in raw.csv",
             },
             "isabelle": subprocess.check_output(["isabelle", "version"], text=True).strip(),
-            "rustc": subprocess.check_output(["rustc", "+stable", "--version"], text=True).strip(),
+            "rustc": subprocess.check_output(["rustc", "+1.94.0", "--version"], text=True).strip(),
         }
         (result_dir / "environment.json").write_text(
             json.dumps(environment, indent=2, sort_keys=True) + "\n", encoding="utf-8"

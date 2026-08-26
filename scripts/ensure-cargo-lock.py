@@ -9,7 +9,7 @@ import sys
 
 
 def cargo_command():
-    return shlex.split(os.environ.get("CARGO", "cargo +stable"))
+    return shlex.split(os.environ.get("CARGO", "cargo +1.94.0"))
 
 
 def stable_environment():

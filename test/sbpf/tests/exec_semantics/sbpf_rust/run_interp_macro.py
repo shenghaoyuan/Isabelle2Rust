@@ -26,7 +26,7 @@ EXPORT_DIR = Path(
 )
 RUST_DIR = EXEC_DIR / "sbpf_rust"
 
-RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "stable")
+RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "1.94.0")
 GLUE_VERSION = "interp-macro-rust-stable-v1"
 
 

@@ -4311,7 +4311,7 @@ val _ = Theory.setup
       check = {env_var = "ISABELLE_CARGO",
         make_destination = I,
         make_command = fn _ =>
-          "env -u RUSTC_BOOTSTRAP RUSTFLAGS=\"-Awarnings\" \"$ISABELLE_CARGO\" +stable build"},
+          "env -u RUSTC_BOOTSTRAP RUSTFLAGS=\"-Awarnings\" \"$ISABELLE_CARGO\" +1.94.0 build"},
       evaluation_args = []})
   #> Code_Target.set_printings (Type_Constructor ("fun",
     [(target, SOME (2, fn_trait_impl_syntax))]))
