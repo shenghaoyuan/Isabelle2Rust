@@ -1,10 +1,9 @@
-//! Correctness adapter for the raw Isabelle/Rust `x64_encode` export.
+//! Adapter for the raw Isabelle/Rust `x64_encode` export.
 //!
-//! The binary parses the same textual instruction language consumed by the
-//! fixed OCaml runner, calls the unwrapped exported function, and compares the
-//! resulting HOL `option (word8 list)` against every byte line in `step2.in`.
-//! Parsing and reporting intentionally live outside the generated module so
-//! the raw export remains a performance-comparison baseline.
+//! In generation mode, the binary encodes every instruction in `step1.in` and
+//! writes the instruction/byte pairs consumed by the stepper pipeline.  The
+//! legacy cross-check mode compares those pairs with an existing `step2.in`.
+//! Parsing and reporting live outside the generated module.
 
 use isabelle_exported::Rust_Word::{self, Bit0, Num1, RustWord, WordWidth};
 use isabelle_exported::X64_encode::{
@@ -14,7 +13,7 @@ use num_bigint::BigInt;
 use num_traits::ToPrimitive as _;
 use std::env;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::process::ExitCode;
 
 type W1 = Num1;
@@ -211,13 +210,53 @@ fn bytes(mut list: List<RustWord<W8>>) -> Vec<u8> {
     }
 }
 
+fn encode(line: &str) -> Result<Vec<u8>, String> {
+    let ins = instruction(line)?;
+    #[cfg(x64_encoder_borrowed)]
+    let encoded = x64_encode(&ins);
+    #[cfg(not(x64_encoder_borrowed))]
+    let encoded = x64_encode(ins);
+    match encoded {
+        HolOption::Some(encoded) => Ok(bytes(encoded)),
+        HolOption::None => Err(format!("x64_encode returned None for {line:?}")),
+    }
+}
+
 fn main() -> ExitCode {
     let path = env::var("X64_ENCODER_INPUT")
-        .expect("X64_ENCODER_INPUT must name the OCaml step2.in oracle");
-    let lines: Vec<String> = BufReader::new(File::open(&path).expect("open step2.in"))
+        .expect("X64_ENCODER_INPUT must name step1.in or the step2.in oracle");
+    let lines: Vec<String> = BufReader::new(File::open(&path).expect("open encoder input"))
         .lines()
         .collect::<Result<_, _>>()
-        .expect("read step2.in");
+        .expect("read encoder input");
+
+    if let Ok(output_path) = env::var("X64_ENCODER_OUTPUT") {
+        let mut output = BufWriter::new(File::create(&output_path).expect("create step2.in"));
+        let mut generated = 0usize;
+        for raw_line in &lines {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let encoded = match encode(line) {
+                Ok(encoded) => encoded,
+                Err(error) => {
+                    eprintln!("FAIL {line}\n  {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            writeln!(output, "{line}").expect("write instruction to step2.in");
+            for byte in encoded {
+                write!(output, "{byte} ").expect("write byte to step2.in");
+            }
+            writeln!(output).expect("finish byte line in step2.in");
+            generated += 1;
+        }
+        output.flush().expect("flush step2.in");
+        println!("Rust encoder generated {generated} cases in {output_path}");
+        return ExitCode::SUCCESS;
+    }
+
     if lines.len() % 2 != 0 {
         eprintln!("ERROR: {path} contains an unmatched instruction line");
         return ExitCode::FAILURE;
@@ -231,10 +270,7 @@ fn main() -> ExitCode {
             .split_whitespace()
             .map(|text| text.parse::<u8>().expect("OCaml byte must fit u8"))
             .collect::<Vec<_>>();
-        let actual = instruction(line).and_then(|ins| match x64_encode(ins) {
-            HolOption::Some(encoded) => Ok(bytes(encoded)),
-            HolOption::None => Err(format!("raw x64_encode returned None for {line:?}")),
-        });
+        let actual = encode(line);
         match actual {
             Ok(actual) if actual == expected => passed += 1,
             Ok(actual) => {

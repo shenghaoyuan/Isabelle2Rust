@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::env;
 use std::fmt;
 use std::fs::File;
@@ -7,8 +7,21 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Register {
-    RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP,
-    R8, R9, R10, R11, R12, R13, R14, 
+    RAX,
+    RBX,
+    RCX,
+    RDX,
+    RSI,
+    RDI,
+    RBP,
+    RSP,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
 }
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -21,8 +34,8 @@ impl fmt::Display for Register {
             Register::RDI => write!(f, "RDI"),
             Register::RBP => write!(f, "RBP"),
             Register::RSP => write!(f, "RSP"),
-            Register::R8  => write!(f, "R8"),
-            Register::R9  => write!(f, "R9"),
+            Register::R8 => write!(f, "R8"),
+            Register::R9 => write!(f, "R9"),
             Register::R10 => write!(f, "R10"),
             Register::R11 => write!(f, "R11"),
             Register::R12 => write!(f, "R12"),
@@ -34,22 +47,22 @@ impl fmt::Display for Register {
 
 fn random_register(rng: &mut impl Rng) -> Register {
     match rng.gen_range(0..15) {
-        0  => Register::RAX,
-        1  => Register::RBX,
-        2  => Register::RCX,
-        3  => Register::RDX,
-        4  => Register::RSI,
-        5  => Register::RDI,
-        6  => Register::RBP,
-        7  => Register::RSP,
-        8  => Register::R8,
-        9  => Register::R9,
+        0 => Register::RAX,
+        1 => Register::RBX,
+        2 => Register::RCX,
+        3 => Register::RDX,
+        4 => Register::RSI,
+        5 => Register::RDI,
+        6 => Register::RBP,
+        7 => Register::RSP,
+        8 => Register::R8,
+        9 => Register::R9,
         10 => Register::R10,
         11 => Register::R11,
         12 => Register::R12,
         13 => Register::R13,
         14 => Register::R14,
-        _  => unreachable!(),
+        _ => unreachable!(),
         /*_  => Register::R15,*/
     }
 }
@@ -76,28 +89,37 @@ fn random_register_except_rsp_r12(rng: &mut impl Rng) -> Register {
     }
 }
 
-
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum TestCond {
-    CondE, CondNe, CondB, CondBe, CondAe, CondA,
-    CondL, CondLe, CondGe, CondG, CondP, CondNp,
+    CondE,
+    CondNe,
+    CondB,
+    CondBe,
+    CondAe,
+    CondA,
+    CondL,
+    CondLe,
+    CondGe,
+    CondG,
+    CondP,
+    CondNp,
 }
 #[allow(dead_code)]
 impl fmt::Display for TestCond {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            TestCond::CondE  => "e",
+            TestCond::CondE => "e",
             TestCond::CondNe => "ne",
-            TestCond::CondB  => "b",
+            TestCond::CondB => "b",
             TestCond::CondBe => "be",
             TestCond::CondAe => "ae",
-            TestCond::CondA  => "a",
-            TestCond::CondL  => "l",
+            TestCond::CondA => "a",
+            TestCond::CondL => "l",
             TestCond::CondLe => "le",
             TestCond::CondGe => "ge",
-            TestCond::CondG  => "g",
-            TestCond::CondP  => "p",
+            TestCond::CondG => "g",
+            TestCond::CondP => "p",
             TestCond::CondNp => "np",
         };
         write!(f, "{}", s)
@@ -118,7 +140,7 @@ fn random_test_cond(rng: &mut impl rand::Rng) -> TestCond {
         8 => CondGe,
         9 => CondG,
         10 => CondP,
-        _ => CondNp,  // case 11
+        _ => CondNp, // case 11
     }
 }
 #[allow(dead_code)]
@@ -154,28 +176,33 @@ fn generate_addrmode(rng: &mut impl Rng, allow_index: bool) -> AddrMode {
 
     let offset = rng.gen_range(0..=100);
 
-    AddrMode { base, index, offset }
+    AddrMode {
+        base,
+        index,
+        offset,
+    }
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum MemChunk {
-    M8, M16, M32, M64
+    M8,
+    M16,
+    M32,
+    M64,
 }
-
 
 #[allow(dead_code)]
 #[derive(Debug)]
 enum Instruction {
-    
     Add(Register, Register),
     Sub(Register, Register),
     And(Register, Register),
-    Or(Register, Register), 
+    Or(Register, Register),
     Xor(Register, Register),
     Mov(Register, Register),
     Xchg(Register, Register),
-    MovImm(Register, i64),  // ocaml int64 cannot handle numbers larger than 2^63-1, so we use i64 here
+    MovImm(Register, i64), // ocaml int64 cannot handle numbers larger than 2^63-1, so we use i64 here
     ShlImm(Register, u8),
     ShrImm(Register, u8),
     SarImm(Register, u8),
@@ -194,15 +221,15 @@ enum Instruction {
     Add32(Register, Register),
     Sub32(Register, Register),
     And32(Register, Register),
-    Or32(Register, Register), 
+    Or32(Register, Register),
     Xor32(Register, Register),
     Mov32(Register, Register),
-    Movxd32(Register, Register), 
+    Movxd32(Register, Register),
     MovImm32(Register, u32),
     AddImm32(Register, u32),
     SubImm32(Register, u32),
     AndImm32(Register, u32),
-    OrImm32(Register, u32), 
+    OrImm32(Register, u32),
     XorImm32(Register, u32),
     ShlImm32(Register, u8),
     ShrImm32(Register, u8),
@@ -217,28 +244,27 @@ enum Instruction {
     Shr32(Register),
     Sar32(Register),
     Bswap32(Register),
-    Cdq,  // sign-extend EAX into EDX:EAX for division
+    Cdq, // sign-extend EAX into EDX:EAX for division
 
-    AddImm16 (Register, u16),
-    RolImm16 (Register, u8),
+    AddImm16(Register, u16),
+    RolImm16(Register, u8),
 
     Cmov(TestCond, Register, Register),
     Cmov32(TestCond, Register, Register),
 
     Test(Register, Register),
     TestImm(Register, u32),
-    Test32(Register, Register),    
+    Test32(Register, Register),
     TestImm32(Register, u32),
     Cmp(Register, Register),
     CmpImm(Register, u32),
-    Cmp32(Register, Register),    
+    Cmp32(Register, Register),
     CmpImm32(Register, u32),
 
     Lea(Register, AddrMode),
 
-    JmpImm32(u32),//Near Jmp
+    JmpImm32(u32),           //Near Jmp
     JccImm32(TestCond, u32), // Conditional Jump
-
 }
 
 impl fmt::Display for Instruction {
@@ -277,9 +303,9 @@ impl fmt::Display for Instruction {
             Instruction::MovImm32(r1, i) => write!(f, "Pmovl_ri {} {}", r1, i),
             Instruction::AddImm32(r1, i) => write!(f, "Paddl_ri {} {}", r1, i),
             Instruction::SubImm32(r1, i) => write!(f, "Psubl_ri {} {}", r1, i),
-            Instruction::AndImm32(r1, i) => write!(f, "Pandl_ri {} {}", r1, i),  
+            Instruction::AndImm32(r1, i) => write!(f, "Pandl_ri {} {}", r1, i),
             Instruction::OrImm32(r1, i) => write!(f, "Porl_ri {} {}", r1, i),
-            Instruction::XorImm32(r1, i) => write!(f, "Pxorl_ri {} {}", r1, i),                      
+            Instruction::XorImm32(r1, i) => write!(f, "Pxorl_ri {} {}", r1, i),
             Instruction::ShlImm32(r, i) => write!(f, "Pshll_ri {} {}", r, i),
             Instruction::ShrImm32(r, i) => write!(f, "Pshrl_ri {} {}", r, i),
             Instruction::SarImm32(r, i) => write!(f, "Psarl_ri {} {}", r, i),
@@ -309,163 +335,185 @@ impl fmt::Display for Instruction {
 
             Instruction::AddImm16(r, i) => write!(f, "Paddw_ri {} {}", r, i),
             Instruction::RolImm16(r, i) => write!(f, "Prolw_ri {} {}", r, i),
-            
-            Instruction::Lea(r, am) =>  write!(f, "Pleaq {} ({})", r, am),
+
+            Instruction::Lea(r, am) => write!(f, "Pleaq {} ({})", r, am),
 
             Instruction::JmpImm32(rel) => write!(f, "Pjmp {}", rel),
             Instruction::JccImm32(cond, rel) => write!(f, "Pjcc {} {}", cond, rel),
-
         }
     }
 }
 
-
-
-fn generate_instruction() -> Instruction {
+fn generate_instruction(rng: &mut impl Rng) -> Instruction {
     use Instruction::*;
-    let mut rng = rand::thread_rng();
     match rng.gen_range(0..64) {
-        0  => Add(random_register(&mut rng), random_register(&mut rng)),
-        1  => Sub(random_register(&mut rng), random_register(&mut rng)),
-        2  => And(random_register(&mut rng), random_register(&mut rng)),
-        3  => Or(random_register(&mut rng), random_register(&mut rng)),
-        4  => Xor(random_register(&mut rng), random_register(&mut rng)),
-        5  => Mov(random_register(&mut rng), random_register(&mut rng)),
-        6  => Xchg(random_register(&mut rng), random_register(&mut rng)),
-        7  => MovImm(random_register(&mut rng), rng.r#gen::<i64>()),
-        8  => ShlImm(random_register(&mut rng), rng.r#gen::<u8>()),
-        9  => ShrImm(random_register(&mut rng), rng.r#gen::<u8>()),
-        10 => SarImm(random_register(&mut rng), rng.r#gen::<u8>()),
-        11 => RorImm(random_register(&mut rng), rng.r#gen::<u8>()),
-        12 => Mul(random_register(&mut rng)),
-        13 => Imul(random_register(&mut rng)),
-        14 => Div(random_register(&mut rng)),
-        15 => Idiv(random_register(&mut rng)),
-        16 => Neg(random_register(&mut rng)),
-        17 => Shl(random_register_except_rcx(&mut rng)),
-        18 => Shr(random_register_except_rcx(&mut rng)),
-        19 => Sar(random_register_except_rcx(&mut rng)),
-        20 => Bswap(random_register(&mut rng)),
+        0 => Add(random_register(rng), random_register(rng)),
+        1 => Sub(random_register(rng), random_register(rng)),
+        2 => And(random_register(rng), random_register(rng)),
+        3 => Or(random_register(rng), random_register(rng)),
+        4 => Xor(random_register(rng), random_register(rng)),
+        5 => Mov(random_register(rng), random_register(rng)),
+        6 => Xchg(random_register(rng), random_register(rng)),
+        7 => MovImm(random_register(rng), rng.r#gen::<i64>()),
+        8 => ShlImm(random_register(rng), rng.r#gen::<u8>()),
+        9 => ShrImm(random_register(rng), rng.r#gen::<u8>()),
+        10 => SarImm(random_register(rng), rng.r#gen::<u8>()),
+        11 => RorImm(random_register(rng), rng.r#gen::<u8>()),
+        12 => Mul(random_register(rng)),
+        13 => Imul(random_register(rng)),
+        14 => Div(random_register(rng)),
+        15 => Idiv(random_register(rng)),
+        16 => Neg(random_register(rng)),
+        17 => Shl(random_register_except_rcx(rng)),
+        18 => Shr(random_register_except_rcx(rng)),
+        19 => Sar(random_register_except_rcx(rng)),
+        20 => Bswap(random_register(rng)),
         21 => Cqo,
 
-        22 => Add32(random_register(&mut rng), random_register(&mut rng)),
-        23 => Sub32(random_register(&mut rng), random_register(&mut rng)),
-        24 => And32(random_register(&mut rng), random_register(&mut rng)),
-        25 => Or32(random_register(&mut rng), random_register(&mut rng)),
-        26 => Xor32(random_register(&mut rng), random_register(&mut rng)),
-        27 => Mov32(random_register(&mut rng), random_register(&mut rng)),
-        28 => Movxd32(random_register(&mut rng), random_register(&mut rng)),
-        29 => MovImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        30 => AddImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        31 => SubImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        32 => AndImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        33 => OrImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        34 => XorImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        35 => ShlImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        36 => ShrImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        37 => SarImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        38 => RorImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        39 => Neg32(random_register(&mut rng)),
-        40 => Mul32(random_register(&mut rng)),
-        41 => Imul32(random_register(&mut rng)),
-        42 => Div32(random_register(&mut rng)),
-        43 => Idiv32(random_register(&mut rng)),
-        44 => Shl32(random_register_except_rcx(&mut rng)),
-        45 => Shr32(random_register_except_rcx(&mut rng)),
-        46 => Sar32(random_register_except_rcx(&mut rng)),
-        47 => Bswap32(random_register(&mut rng)),
+        22 => Add32(random_register(rng), random_register(rng)),
+        23 => Sub32(random_register(rng), random_register(rng)),
+        24 => And32(random_register(rng), random_register(rng)),
+        25 => Or32(random_register(rng), random_register(rng)),
+        26 => Xor32(random_register(rng), random_register(rng)),
+        27 => Mov32(random_register(rng), random_register(rng)),
+        28 => Movxd32(random_register(rng), random_register(rng)),
+        29 => MovImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        30 => AddImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        31 => SubImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        32 => AndImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        33 => OrImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        34 => XorImm32(random_register(rng), rng.r#gen::<i32>() as u32),
+        35 => ShlImm32(random_register(rng), rng.r#gen::<u8>()),
+        36 => ShrImm32(random_register(rng), rng.r#gen::<u8>()),
+        37 => SarImm32(random_register(rng), rng.r#gen::<u8>()),
+        38 => RorImm32(random_register(rng), rng.r#gen::<u8>()),
+        39 => Neg32(random_register(rng)),
+        40 => Mul32(random_register(rng)),
+        41 => Imul32(random_register(rng)),
+        42 => Div32(random_register(rng)),
+        43 => Idiv32(random_register(rng)),
+        44 => Shl32(random_register_except_rcx(rng)),
+        45 => Shr32(random_register_except_rcx(rng)),
+        46 => Sar32(random_register_except_rcx(rng)),
+        47 => Bswap32(random_register(rng)),
         48 => Cdq,
 
-        49 => Cmov(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
-        50 => Cmov32(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
+        49 => Cmov(
+            random_test_cond(rng),
+            random_register(rng),
+            random_register(rng),
+        ),
+        50 => Cmov32(
+            random_test_cond(rng),
+            random_register(rng),
+            random_register(rng),
+        ),
 
-        51 => AddImm16(random_register(&mut rng), rng.r#gen::<i16>() as u16),
-        52 => RolImm16(random_register(&mut rng), rng.r#gen::<i8>() as u8),
-        53  => Lea(random_register(&mut rng), generate_addrmode(&mut rng, false)),
+        51 => AddImm16(random_register(rng), rng.r#gen::<i16>() as u16),
+        52 => RolImm16(random_register(rng), rng.r#gen::<i8>() as u8),
+        53 => Lea(random_register(rng), generate_addrmode(rng, false)),
         54 => JmpImm32(rng.gen_range(0..10)),
-        55 => JccImm32(random_test_cond(&mut rng), rng.gen_range(0..10)),
-        56 => Test(random_register(&mut rng), random_register(&mut rng)),
-        57 => TestImm(random_register(&mut rng), rng.r#gen::<u32>()),
-        58 => Test32(random_register(&mut rng), random_register(&mut rng)),
-        59 => TestImm32(random_register(&mut rng), rng.r#gen::<u32>()),
-        60 => Cmp(random_register(&mut rng), random_register(&mut rng)),
-        61 => CmpImm(random_register(&mut rng), rng.r#gen::<u32>()),
-        62 => Cmp32(random_register(&mut rng), random_register(&mut rng)),
-        63 => CmpImm32(random_register(&mut rng), rng.r#gen::<u32>()),
+        55 => JccImm32(random_test_cond(rng), rng.gen_range(0..10)),
+        56 => Test(random_register(rng), random_register(rng)),
+        57 => TestImm(random_register(rng), rng.r#gen::<u32>()),
+        58 => Test32(random_register(rng), random_register(rng)),
+        59 => TestImm32(random_register(rng), rng.r#gen::<u32>()),
+        60 => Cmp(random_register(rng), random_register(rng)),
+        61 => CmpImm(random_register(rng), rng.r#gen::<u32>()),
+        62 => Cmp32(random_register(rng), random_register(rng)),
+        63 => CmpImm32(random_register(rng), rng.r#gen::<u32>()),
 
-
-    _   => unreachable!(),
+        _ => unreachable!(),
     }
 }
 
 fn main() {
-    let n = env::args()
-        .nth(1)
-        .map(|arg| arg.parse::<usize>().unwrap_or_else(|_| panic!("invalid instruction count: {}", arg)))
+    let mut args = env::args().skip(1);
+    let n = args
+        .next()
+        .map(|arg| {
+            arg.parse::<usize>()
+                .unwrap_or_else(|_| panic!("invalid instruction count: {}", arg))
+        })
         .unwrap_or(100000);
+    let seed = args
+        .next()
+        .map(|arg| {
+            arg.parse::<u64>()
+                .unwrap_or_else(|_| panic!("invalid seed: {}", arg))
+        })
+        .unwrap_or(5984326);
+    if args.next().is_some() {
+        panic!("usage: x64in-gen [COUNT] [SEED]");
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
     let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../0-data/step1.in");
     let mut file = File::create(&out_path).unwrap();
     for _ in 0..n {
-        let instruction = generate_instruction();
+        let instruction = generate_instruction(&mut rng);
         writeln!(file, "{}", instruction).unwrap();
     }
-    
-    println!("Generated {} x64 instructions in {}", n, out_path.display());
+
+    println!(
+        "Generated {} x64 instructions with seed {} in {}",
+        n,
+        seed,
+        out_path.display()
+    );
 }
 
-        
-        /*0  => Add  (random_register(&mut rng), random_register(&mut rng)),
-        1  => Sub  (random_register(&mut rng), random_register(&mut rng)),
-        2  => And  (random_register(&mut rng), random_register(&mut rng)),
-        3  => Or   (random_register(&mut rng), random_register(&mut rng)),
-        4  => Xor  (random_register(&mut rng), random_register(&mut rng)),
-        5  => Mov  (random_register(&mut rng), random_register(&mut rng)),
-        6  => Xchg (random_register(&mut rng), random_register(&mut rng)),
-        7  => MovImm (random_register(&mut rng), rng.r#gen::<i64>()),
-        8  => Neg  (random_register(&mut rng)),
-        9  => Mul   (random_register(&mut rng)),
-        10 => Imul  (random_register(&mut rng)),
-        11 => Div   (random_register(&mut rng)),
-        12 => Idiv  (random_register(&mut rng)),
-        13 => Shl    (random_register_except_rcx(&mut rng)),
-        14 => Shr    (random_register_except_rcx(&mut rng)),
-        15 => Sar    (random_register_except_rcx(&mut rng)),
-        16 => ShlImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
-        17 => ShrImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
-        18 => SarImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
+/*0  => Add  (random_register(&mut rng), random_register(&mut rng)),
+1  => Sub  (random_register(&mut rng), random_register(&mut rng)),
+2  => And  (random_register(&mut rng), random_register(&mut rng)),
+3  => Or   (random_register(&mut rng), random_register(&mut rng)),
+4  => Xor  (random_register(&mut rng), random_register(&mut rng)),
+5  => Mov  (random_register(&mut rng), random_register(&mut rng)),
+6  => Xchg (random_register(&mut rng), random_register(&mut rng)),
+7  => MovImm (random_register(&mut rng), rng.r#gen::<i64>()),
+8  => Neg  (random_register(&mut rng)),
+9  => Mul   (random_register(&mut rng)),
+10 => Imul  (random_register(&mut rng)),
+11 => Div   (random_register(&mut rng)),
+12 => Idiv  (random_register(&mut rng)),
+13 => Shl    (random_register_except_rcx(&mut rng)),
+14 => Shr    (random_register_except_rcx(&mut rng)),
+15 => Sar    (random_register_except_rcx(&mut rng)),
+16 => ShlImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
+17 => ShrImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
+18 => SarImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
 
 
-        19 => Add32  (random_register(&mut rng), random_register(&mut rng)),
-        20 => Sub32  (random_register(&mut rng), random_register(&mut rng)),
-        21 => And32  (random_register(&mut rng), random_register(&mut rng)),
-        22 => Or32   (random_register(&mut rng), random_register(&mut rng)),
-        23 => Xor32  (random_register(&mut rng), random_register(&mut rng)),
-        24 => Mov32  (random_register(&mut rng), random_register(&mut rng)),
-        25 => Movxd32(random_register(&mut rng), random_register(&mut rng)),
-        26 => MovImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        27 => Neg32  (random_register(&mut rng)),
-        28 => AddImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        29 => SubImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        30 => AndImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        31 => OrImm32 (random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        32 => XorImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
-        33 => Shl32   (random_register_except_rcx(&mut rng)),
-        34 => Shr32   (random_register_except_rcx(&mut rng)),
-        35 => Sar32   (random_register_except_rcx(&mut rng)),
-        36 => ShlImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        37 => ShrImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        38 => SarImm32(random_register(&mut rng), rng.r#gen::<u8>()),
-        39 => Mul32   (random_register(&mut rng)),
-        40 => Imul32  (random_register(&mut rng)),
-        41 => Div32   (random_register(&mut rng)),
-        42 => Idiv32  (random_register(&mut rng)),
-        43 => Cmov(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
-        44 => Cmov32(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
-        0 => Cqo,
-        1 => Cdq, 
-        17 => RorImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
-        17 => RorImm32 (random_register(&mut rng), rng.gen_range(0..64) as u8)
-        0 => AddImm16 (random_register(&mut rng), rng.r#gen::<i16>() as u16),
-        1 => RolImm16 (random_register(&mut rng), rng.r#gen::<i8>() as u8),
-        0  => Bswap   (random_register(&mut rng)),
-        1  => Bswap32   (random_register(&mut rng)),*/
+19 => Add32  (random_register(&mut rng), random_register(&mut rng)),
+20 => Sub32  (random_register(&mut rng), random_register(&mut rng)),
+21 => And32  (random_register(&mut rng), random_register(&mut rng)),
+22 => Or32   (random_register(&mut rng), random_register(&mut rng)),
+23 => Xor32  (random_register(&mut rng), random_register(&mut rng)),
+24 => Mov32  (random_register(&mut rng), random_register(&mut rng)),
+25 => Movxd32(random_register(&mut rng), random_register(&mut rng)),
+26 => MovImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
+27 => Neg32  (random_register(&mut rng)),
+28 => AddImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
+29 => SubImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
+30 => AndImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
+31 => OrImm32 (random_register(&mut rng), rng.r#gen::<i32>() as u32),
+32 => XorImm32(random_register(&mut rng), rng.r#gen::<i32>() as u32),
+33 => Shl32   (random_register_except_rcx(&mut rng)),
+34 => Shr32   (random_register_except_rcx(&mut rng)),
+35 => Sar32   (random_register_except_rcx(&mut rng)),
+36 => ShlImm32(random_register(&mut rng), rng.r#gen::<u8>()),
+37 => ShrImm32(random_register(&mut rng), rng.r#gen::<u8>()),
+38 => SarImm32(random_register(&mut rng), rng.r#gen::<u8>()),
+39 => Mul32   (random_register(&mut rng)),
+40 => Imul32  (random_register(&mut rng)),
+41 => Div32   (random_register(&mut rng)),
+42 => Idiv32  (random_register(&mut rng)),
+43 => Cmov(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
+44 => Cmov32(random_test_cond(&mut rng), random_register(&mut rng), random_register(&mut rng)),
+0 => Cqo,
+1 => Cdq,
+17 => RorImm (random_register(&mut rng), rng.gen_range(0..64) as u8),
+17 => RorImm32 (random_register(&mut rng), rng.gen_range(0..64) as u8)
+0 => AddImm16 (random_register(&mut rng), rng.r#gen::<i16>() as u16),
+1 => RolImm16 (random_register(&mut rng), rng.r#gen::<i8>() as u8),
+0  => Bswap   (random_register(&mut rng)),
+1  => Bswap32   (random_register(&mut rng)),*/

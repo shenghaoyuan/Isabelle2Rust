@@ -10,6 +10,8 @@ compile on their own.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shlex
 import shutil
@@ -22,12 +24,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 THEORY_DIR = ROOT / "test" / "x64" / "theory"
 LOCK_SOURCE = ROOT / "scripts" / "isabelle-exported.Cargo.lock"
-RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "stable")
+RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "1.94.0")
 ISABELLE_THREADS = os.environ.get("X64_ISABELLE_THREADS", "1")
 ISABELLE_TIMEOUT = os.environ.get("X64_ISABELLE_TIMEOUT", "1200")
 ISABELLE_MAX_HEAP = os.environ.get("X64_ISABELLE_MAX_HEAP", "3200")
 ISABELLE_JAVA_HEAP = os.environ.get("X64_ISABELLE_JAVA_HEAP", "768")
 ISABELLE_LAUNCHER = ROOT / "test" / "x64" / "x64-validation" / "_build" / "isabelle-bounded"
+EXPORT_CACHE = ROOT / "test" / "x64" / "x64-validation" / "_build" / "export-cache.json"
+STAGE2_EXPORT_ROOT = THEORY_DIR / "stage2" / "x64_generator_bigint"
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,10 @@ OCAML_EXPORTS = (
     OCAML_EXPORT_ROOT / "x64_encode.ocaml",
     OCAML_EXPORT_ROOT / "x64_step_test.ocaml",
 )
+STAGE2_EXPORTS = (
+    STAGE2_EXPORT_ROOT / "x64_encode" / "Cargo.toml",
+    STAGE2_EXPORT_ROOT / "x64_step_test" / "Cargo.toml",
+)
 
 
 def rel(path: Path) -> str:
@@ -71,6 +79,87 @@ def rel(path: Path) -> str:
         return str(path.relative_to(ROOT))
     except ValueError:
         return str(path)
+
+
+def export_source_fingerprint() -> str:
+    """Hash the sources and pinned inputs that determine x64 exports."""
+
+    files = sorted(
+        path
+        for path in (ROOT / "translate").rglob("*")
+        if path.is_file() and path.suffix in {".ML", ".thy"}
+    )
+    files += sorted((ROOT / "test" / "x64" / "theory").glob("*.thy"))
+    files += [
+        ROOT / "ROOT",
+        ROOT / "rust-toolchain.toml",
+        ROOT / "scripts" / "ensure-cargo-lock.py",
+        LOCK_SOURCE,
+    ]
+    digest = hashlib.sha256()
+    digest.update(f"rust_toolchain\0{RUST_TOOLCHAIN}\0".encode())
+    for path in sorted(set(files)):
+        digest.update(f"{rel(path)}\0".encode())
+        if not path.is_file():
+            digest.update(b"missing\0")
+            continue
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def stage2_source_fingerprint() -> str:
+    """Hash the Stage-1 exports and optimizer sources that determine Stage 2."""
+
+    rustlight = ROOT.parent / "RustLightAST"
+    roots = [
+        THEORY_DIR / "stage1" / "x64_generator_bigint",
+        ROOT / "optimize" / "src",
+        rustlight / "src",
+    ]
+    files = [
+        path
+        for directory in roots
+        for path in directory.rglob("*")
+        if path.is_file() and "target" not in path.relative_to(directory).parts
+    ]
+    files += [
+        ROOT / "optimize" / "Cargo.toml",
+        ROOT / "optimize" / "Cargo.lock",
+        rustlight / "Cargo.toml",
+        rustlight / "Cargo.lock",
+        ROOT / "rust-toolchain.toml",
+    ]
+    digest = hashlib.sha256()
+    for path in sorted(set(files)):
+        digest.update(f"{rel(path)}\0".encode())
+        if not path.is_file():
+            digest.update(b"missing\0")
+            continue
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def read_export_cache() -> dict[str, str]:
+    try:
+        value = json.loads(EXPORT_CACHE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def write_export_cache(cache: dict[str, str]) -> None:
+    EXPORT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = EXPORT_CACHE.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, EXPORT_CACHE)
 
 
 def announce(title: str, detail: str) -> None:
@@ -194,7 +283,11 @@ def build_theory(
 
 
 def ensure_export(
-    spec: ExportSpec, *, rebuild: bool, isabelle_env: dict[str, str]
+    spec: ExportSpec,
+    *,
+    rebuild: bool,
+    rebuild_reason: str,
+    isabelle_env: dict[str, str],
 ) -> bool:
     """Generate a Rust export only when absent or explicitly requested."""
 
@@ -203,7 +296,7 @@ def ensure_export(
         announce("Isabelle export", f"reusing {rel(spec.crate_dir)}")
         return True
 
-    reason = "REBUILD=1" if rebuild else "missing " + ", ".join(rel(p) for p in missing)
+    reason = rebuild_reason if rebuild else "missing " + ", ".join(rel(p) for p in missing)
     announce("Isabelle export", f"building {spec.theory} ({reason})")
     # A new export must not inherit an old main.rs, lockfile, target tree, or
     # previously injected test fragment.  The directory contains only
@@ -217,7 +310,9 @@ def ensure_export(
     return not missing_after
 
 
-def ensure_ocaml_export(*, rebuild: bool, isabelle_env: dict[str, str]) -> bool:
+def ensure_ocaml_export(
+    *, rebuild: bool, rebuild_reason: str, isabelle_env: dict[str, str]
+) -> bool:
     """Generate the combined fixed OCaml encoder and stepper export."""
 
     missing = [path for path in OCAML_EXPORTS if not path.exists()]
@@ -225,7 +320,7 @@ def ensure_ocaml_export(*, rebuild: bool, isabelle_env: dict[str, str]) -> bool:
         announce("Isabelle export", f"reusing {rel(OCAML_EXPORT_ROOT)}")
         return True
 
-    reason = "REBUILD=1" if rebuild else "missing " + ", ".join(rel(p) for p in missing)
+    reason = rebuild_reason if rebuild else "missing " + ", ".join(rel(p) for p in missing)
     announce("Isabelle export", f"building {OCAML_THEORY} ({reason})")
     if not build_theory(OCAML_THEORY, OCAML_EXPORT_ROOT, isabelle_env=isabelle_env):
         return False
@@ -255,24 +350,6 @@ def compile_export(spec: ExportSpec, cargo: list[str]) -> bool:
     env.pop("RUSTC_BOOTSTRAP", None)
     env["RUSTFLAGS"] = "-Awarnings"
     manifest = spec.crate_dir / "Cargo.toml"
-    # The shared lockfile pins every optional generated-code dependency.  Trim
-    # it offline to the dependencies selected by this export: Checked128 has
-    # none, whereas the BigInt profiles retain the pinned entries.
-    if (
-        run(
-            cargo
-            + [
-                "generate-lockfile",
-                "--offline",
-                "--manifest-path",
-                str(manifest),
-            ],
-            cwd=ROOT,
-            env=env,
-        )
-        != 0
-    ):
-        return False
     announce("raw Cargo build", rel(manifest))
     return (
         run(
@@ -284,15 +361,50 @@ def compile_export(spec: ExportSpec, cargo: list[str]) -> bool:
     )
 
 
+def ensure_stage2_export(cache: dict[str, str], *, rebuild: bool) -> bool:
+    """Generate Stage 2 only when its Stage-1 or optimizer inputs changed."""
+
+    key = stage2_source_fingerprint()
+    missing = [path for path in STAGE2_EXPORTS if not path.is_file()]
+    if not rebuild and cache.get("stage2") == key and not missing:
+        announce("Stage-2 export", f"reusing {rel(STAGE2_EXPORT_ROOT)}")
+        return True
+
+    reason = "REBUILD=1" if rebuild else (
+        "missing generated files" if missing else "relevant sources changed"
+    )
+    announce("Stage-2 export", f"optimizing x64_generator_bigint ({reason})")
+    if run(
+        ["make", "opt", "DIR=test/x64/theory", "Name=x64_generator_bigint"],
+        cwd=ROOT,
+    ) != 0:
+        return False
+    missing_after = [path for path in STAGE2_EXPORTS if not path.is_file()]
+    for path in missing_after:
+        print(f"ERROR: expected Stage-2 export not found: {rel(path)}")
+    if missing_after:
+        return False
+    cache["stage2"] = key
+    write_export_cache(cache)
+    return True
+
+
 def main() -> int:
     if len(sys.argv) > 2 or (
-        len(sys.argv) == 2 and sys.argv[1] not in {"performance", "ocaml"}
+        len(sys.argv) == 2 and sys.argv[1] not in {"performance", "ocaml", "stage2"}
     ):
-        print("usage: run_rust_export.py [performance|ocaml]")
+        print("usage: run_rust_export.py [performance|ocaml|stage2]")
         return 2
-    mode = sys.argv[1] if len(sys.argv) == 2 else "correctness"
+    requested_mode = sys.argv[1] if len(sys.argv) == 2 else "correctness"
+    stage2_requested = requested_mode == "stage2"
+    mode = "correctness" if stage2_requested else requested_mode
     exports = PERFORMANCE_EXPORTS if mode == "performance" else CORRECTNESS_EXPORTS
-    rebuild = os.environ.get("REBUILD") == "1"
+    forced_rebuild = os.environ.get("REBUILD") == "1"
+    source_key = export_source_fingerprint()
+    export_cache = read_export_cache()
+    source_changed = export_cache.get(mode) != source_key
+    rebuild = forced_rebuild or source_changed
+    rebuild_reason = "REBUILD=1" if forced_rebuild else "relevant sources changed"
 
     isabelle_env = isabelle_environment()
     announce(
@@ -305,7 +417,14 @@ def main() -> int:
     if not check_isabelle_environment(isabelle_env):
         return 2
     if mode == "ocaml":
-        passed = ensure_ocaml_export(rebuild=rebuild, isabelle_env=isabelle_env)
+        passed = ensure_ocaml_export(
+            rebuild=rebuild,
+            rebuild_reason=rebuild_reason,
+            isabelle_env=isabelle_env,
+        )
+        if passed:
+            export_cache[mode] = source_key
+            write_export_cache(export_cache)
         print("\n========================================")
         print("x64 raw OCaml export summary")
         print("  Overall: PASS" if passed else "  Overall: FAIL")
@@ -316,10 +435,22 @@ def main() -> int:
         return 2
     passed = 0
     rebuilt_theories: set[str] = set()
+    theories_to_rebuild = {
+        spec.theory
+        for spec in exports
+        if rebuild or any(not path.exists() for path in expected_files(spec))
+    }
     for spec in exports:
-        rebuild_theory = rebuild and spec.theory not in rebuilt_theories
+        rebuild_theory = (
+            spec.theory in theories_to_rebuild and spec.theory not in rebuilt_theories
+        )
         if not ensure_export(
-            spec, rebuild=rebuild_theory, isabelle_env=isabelle_env
+            spec,
+            rebuild=rebuild_theory,
+            rebuild_reason=(
+                rebuild_reason if rebuild else "missing generated files"
+            ),
+            isabelle_env=isabelle_env,
         ):
             print(f"ERROR: Rust export failed for {spec.theory}")
             break
@@ -330,12 +461,29 @@ def main() -> int:
         passed += 1
 
     failed = len(exports) - passed
+    stage2_passed = False
+    if failed == 0:
+        export_cache[mode] = source_key
+        write_export_cache(export_cache)
+        if stage2_requested:
+            stage2_passed = ensure_stage2_export(
+                export_cache, rebuild=forced_rebuild
+            )
     print("\n========================================")
-    print("x64 raw Rust export summary")
-    print(f"  Passed: {passed}")
-    print(f"  Failed: {failed}")
-    print("  Overall: PASS" if failed == 0 else "  Overall: FAIL")
-    return 0 if failed == 0 else 1
+    print("x64 two-stage export summary")
+    print(
+        f"  Stage-1 raw Rust export: Passed {passed} / "
+        f"Failed {failed} / Total {len(exports)}"
+    )
+    if stage2_requested:
+        print(
+            "  Stage-2 optimized Rust export: PASS"
+            if stage2_passed
+            else "  Stage-2 optimized Rust export: FAIL"
+        )
+    overall = failed == 0 and (not stage2_requested or stage2_passed)
+    print("  Overall: PASS" if overall else "  Overall: FAIL")
+    return 0 if overall else 1
 
 
 if __name__ == "__main__":

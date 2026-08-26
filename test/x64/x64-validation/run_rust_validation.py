@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build and run correctness adapters over copies of raw x64 Rust exports.
+"""Build and run adapters over copies of x64 Rust exports.
 
-The stage1 crates are treated as immutable inputs.  Each adapter is installed
-under ``x64-validation/_build`` together with a cache stamp; only the stepper
-copy receives appended observation glue.  The generated functions in stage1
-therefore remain suitable as the shared OCaml/Rust performance baseline.
+The selected crates are treated as immutable inputs. By default the runner
+uses the raw Stage-1 exports and ``x64-validation/_build``. Campaign scripts
+may select a Stage-2 export and a separate cache with ``X64_RUST_EXPORT_ROOT``
+and ``X64_RUST_BUILD_DIR``. Only the copied stepper receives observation glue.
 """
 
 from __future__ import annotations
@@ -23,11 +23,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATION = ROOT / "test" / "x64" / "x64-validation"
-THEORY_STAGE1 = ROOT / "test" / "x64" / "theory" / "stage1"
+DEFAULT_EXPORT_ROOT = (
+    ROOT / "test" / "x64" / "theory" / "stage1" / "x64_generator_bigint"
+)
+EXPORT_ROOT = Path(os.environ.get("X64_RUST_EXPORT_ROOT") or DEFAULT_EXPORT_ROOT)
+if not EXPORT_ROOT.is_absolute():
+    EXPORT_ROOT = ROOT / EXPORT_ROOT
 HARNESS = VALIDATION / "rust_harness"
-BUILD = VALIDATION / "_build"
-RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "stable")
-CACHE_VERSION = "x64-raw-cross-v1"
+BUILD = Path(os.environ.get("X64_RUST_BUILD_DIR") or VALIDATION / "_build")
+if not BUILD.is_absolute():
+    BUILD = ROOT / BUILD
+RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "1.94.0")
+CACHE_VERSION = "x64-cross-v2"
 
 
 @dataclass(frozen=True)
@@ -56,21 +63,38 @@ class Adapter:
 
 
 ADAPTERS = {
-    "encoder": Adapter(
+    "encode": Adapter(
         name="encoder",
-        source=THEORY_STAGE1 / "x64_generator_bigint" / "x64_encode",
+        source=EXPORT_ROOT / "x64_encode",
         module="X64_encode.rs",
         main=HARNESS / "encoder_main.rs",
         input_env="X64_ENCODER_INPUT",
-        input_path=VALIDATION / "0-data" / "step2.in",
+        input_path=Path(
+            os.environ.get("X64_ENCODER_INPUT")
+            or VALIDATION / "0-data" / "step1.in"
+        ),
+    ),
+    "encoder": Adapter(
+        name="encoder",
+        source=EXPORT_ROOT / "x64_encode",
+        module="X64_encode.rs",
+        main=HARNESS / "encoder_main.rs",
+        input_env="X64_ENCODER_INPUT",
+        input_path=Path(
+            os.environ.get("X64_ENCODER_INPUT")
+            or VALIDATION / "0-data" / "step2.in"
+        ),
     ),
     "stepper": Adapter(
         name="stepper",
-        source=THEORY_STAGE1 / "x64_generator_bigint" / "x64_step_test",
+        source=EXPORT_ROOT / "x64_step_test",
         module="X64_step_test.rs",
         main=HARNESS / "stepper_main.rs",
         input_env="X64_STEPPER_INPUT",
-        input_path=VALIDATION / "0-data" / "step4.json",
+        input_path=Path(
+            os.environ.get("X64_STEPPER_INPUT")
+            or VALIDATION / "0-data" / "step4.json"
+        ),
         observation=HARNESS / "step_observe.rs",
     ),
 }
@@ -112,6 +136,7 @@ def cache_key(adapter: Adapter) -> dict[str, str]:
 
     key = {
         "version": CACHE_VERSION,
+        "export_root": str(EXPORT_ROOT.resolve()),
         "rust_toolchain": RUST_TOOLCHAIN,
         "runner": sha256(Path(__file__)),
         "generated_module": sha256(adapter.source_module),
@@ -121,6 +146,15 @@ def cache_key(adapter: Adapter) -> dict[str, str]:
     if adapter.observation is not None:
         key["observation"] = sha256(adapter.observation)
     return key
+
+
+def rustflags(adapter: Adapter) -> str:
+    flags = ["-Awarnings"]
+    if adapter.name == "encoder":
+        module = adapter.source_module.read_text(encoding="utf-8")
+        if re.search(r"pub\s+fn\s+x64_encode\s*\(\s*ins\s*:\s*&Instruction", module):
+            flags.append("--cfg x64_encoder_borrowed")
+    return " ".join(flags)
 
 
 def ensure_dependency(text: str, name: str, specification: str) -> str:
@@ -193,17 +227,11 @@ def prepare(adapter: Adapter, cargo: list[str], env: dict[str, str]) -> Path | N
         text = ensure_dependency(text, "serde", '{ version = "1.0", features = ["derive"] }')
         text = ensure_dependency(text, "serde_json", '"1.0"')
         toml.write_text(text, encoding="utf-8")
-        # The raw shared lockfile intentionally lacks harness dependencies.
-        # Resolve them only inside the correctness copy, then require --locked
-        # for the actual build and all later cached runs.
-        # These dependencies are already used by the repository's sBPF and
-        # x64 data generators.  Resolve from the local Cargo cache so a
-        # correctness run never depends on registry/network availability.
-        if run(
-            cargo + ["generate-lockfile", "--offline", "--manifest-path", str(toml)],
-            env=env,
-        ) != 0:
+        lock = ROOT / "scripts" / "isabelle-validation.Cargo.lock"
+        if not lock.exists():
+            print(f"ERROR: missing validation lockfile: {rel(lock)}")
             return None
+        shutil.copy2(lock, adapter.work / "Cargo.lock")
 
     manifest = adapter.work / "Cargo.toml"
     if run(cargo + ["build", "--locked", "--manifest-path", str(manifest)], env=env) != 0:
@@ -216,11 +244,12 @@ def prepare(adapter: Adapter, cargo: list[str], env: dict[str, str]) -> Path | N
 
 def main() -> int:
     if len(sys.argv) != 2 or sys.argv[1] not in ADAPTERS:
-        print("usage: run_rust_validation.py {encoder|stepper}")
+        print("usage: run_rust_validation.py {encode|encoder|stepper}")
         return 2
-    adapter = ADAPTERS[sys.argv[1]]
+    action = sys.argv[1]
+    adapter = ADAPTERS[action]
     if not adapter.input_path.exists():
-        print(f"ERROR: missing x64 test oracle: {rel(adapter.input_path)}")
+        print(f"ERROR: missing x64 adapter input: {rel(adapter.input_path)}")
         return 2
 
     cargo = cargo_command()
@@ -228,8 +257,12 @@ def main() -> int:
         return 2
     env = os.environ.copy()
     env.pop("RUSTC_BOOTSTRAP", None)
-    env["RUSTFLAGS"] = "-Awarnings"
+    env["RUSTFLAGS"] = rustflags(adapter)
     env[adapter.input_env] = str(adapter.input_path)
+    if action == "encode":
+        env["X64_ENCODER_OUTPUT"] = str(
+            Path(os.environ.get("X64_ENCODER_OUTPUT") or VALIDATION / "0-data" / "step2.in")
+        )
     binary = prepare(adapter, cargo, env)
     if binary is None:
         return 1

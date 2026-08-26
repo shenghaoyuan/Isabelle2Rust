@@ -19,7 +19,8 @@ HOL_DIR         ?= test/HOL_Codegenerator
 HOL_GCD_THEORY ?= Code_Test_Rust
 HOL_STRESS_SESSION ?= Rust-HOL-Codegenerator_Test
 
-CARGO                  ?= cargo +stable
+RUST_TOOLCHAIN         ?= 1.94.0
+CARGO                  ?= cargo +$(RUST_TOOLCHAIN)
 ISABELLE_CARGO         ?= $(HOME)/.cargo/bin/cargo
 OCAMLC                 ?= ocamlc
 OCAMLFIND              ?= ocamlfind
@@ -420,13 +421,12 @@ rq3-x64:
 #   language-specific glue and execution live under sbpf_ocaml / sbpf_rust.
 SBPF_EXEC         := test/sbpf/tests/exec_semantics
 OCAML_VERSION     ?= 4.11.2
-RUST_TOOLCHAIN    ?= stable
 
 macro_sbpf:
 	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" DATA_REBUILD="$(DATA_REBUILD)" OCAML_REBUILD="$(OCAML_REBUILD)" OCAML_VERSION="$(OCAML_VERSION)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" SBPF_THEORY="$(SBPF_THEORY)" SBPF_EXPORT_DIR="$(SBPF_EXPORT_DIR)" python3 $(SBPF_EXEC)/run_macro_sbpf.py
 
 micro_sbpf:
-	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" OCAML_REBUILD="$(OCAML_REBUILD)" OCAML_VERSION="$(OCAML_VERSION)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" SBPF_THEORY="$(SBPF_THEORY)" SBPF_EXPORT_DIR="$(SBPF_EXPORT_DIR)" SBPF_STEP_JSON="$(SBPF_STEP_JSON)" SBPF_STEP_SEED="$(SBPF_STEP_SEED)" python3 $(SBPF_EXEC)/run_micro_sbpf.py
+	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" X="$(X)" REBUILD="$(REBUILD)" OCAML_REBUILD="$(OCAML_REBUILD)" OCAML_VERSION="$(OCAML_VERSION)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" SBPF_THEORY="$(SBPF_THEORY)" SBPF_EXPORT_DIR="$(SBPF_EXPORT_DIR)" SBPF_STEP_JSON="$(SBPF_STEP_JSON)" SBPF_STEP_SEED="$(SBPF_STEP_SEED)" python3 $(SBPF_EXEC)/run_micro_sbpf.py
 
 micro_sbpf_gen:
 	@PYTHONDONTWRITEBYTECODE=1 X="$(X)" SBPF_STEP_JSON="$(SBPF_STEP_JSON)" SBPF_STEP_SEED="$(SBPF_STEP_SEED)" python3 $(SBPF_EXEC)/run_micro_sbpf.py gen
@@ -442,7 +442,9 @@ X64_STEPPER_C       := $(X64_VALIDATION)/4-x64-stepper-c
 X64_SEMANTICS       := $(X64_VALIDATION)/5-exec-semantics
 X64_RUST_EXPORT     := $(X64_VALIDATION)/run_rust_export.py
 X64_RUST_VALIDATION := $(X64_VALIDATION)/run_rust_validation.py
-X64_COUNT           ?= 10000
+X64_RUN             := $(X64_VALIDATION)/run_x64.py
+X                   ?= 10000
+SEED                ?= 5984326
 X64_ISABELLE_THREADS ?= 1
 X64_ISABELLE_TIMEOUT ?= 1200
 X64_ISABELLE_MAX_HEAP ?= 3200
@@ -450,26 +452,22 @@ X64_ISABELLE_JAVA_HEAP ?= 768
 X64_OCAML_PACKAGES  ?= yojson
 X64_JANSSON_LIBS    ?= $(shell pkg-config --libs jansson 2>/dev/null || echo -ljansson)
 
-# Compile both untouched stage1 Rust exports before any correctness harness is
-# allowed to run.  The script builds Rust-only theories, so the fixed OCaml
-# baseline is neither regenerated nor rewritten by this gate.
+# Generate or reuse both Rust stages and compile their untouched exports before
+# any correctness harness is allowed to run.
 x64-rust-export:
-	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" X64_ISABELLE_THREADS="$(X64_ISABELLE_THREADS)" X64_ISABELLE_TIMEOUT="$(X64_ISABELLE_TIMEOUT)" X64_ISABELLE_MAX_HEAP="$(X64_ISABELLE_MAX_HEAP)" X64_ISABELLE_JAVA_HEAP="$(X64_ISABELLE_JAVA_HEAP)" python3 $(X64_RUST_EXPORT)
+	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" X64_ISABELLE_THREADS="$(X64_ISABELLE_THREADS)" X64_ISABELLE_TIMEOUT="$(X64_ISABELLE_TIMEOUT)" X64_ISABELLE_MAX_HEAP="$(X64_ISABELLE_MAX_HEAP)" X64_ISABELLE_JAVA_HEAP="$(X64_ISABELLE_JAVA_HEAP)" python3 $(X64_RUST_EXPORT) stage2
 
-# Stage 1 compiles both raw Rust exports before changing random data or OCaml
-# oracle output, then checks each raw x64_encode result against OCaml.
+# Stage 1 compiles the raw Rust exports, then uses the Rust encoder to prepare
+# the machine-code inputs consumed by the stepper validation.
 x64-gen: x64-rust-export
-	@echo ">>> [x64-gen] generating $(X64_COUNT) random x64 instructions"
-	@env -u RUSTC_BOOTSTRAP $(CARGO) run --quiet --manifest-path $(X64_INS_GEN)/Cargo.toml -- $(X64_COUNT)
-	@echo ">>> [x64-gen] encoding instructions with the existing OCaml x64 encoder"
-	@cd "$(X64_ASSEMBLER)" && $(OCAMLC) -o exec x64_encode.ml && ./exec
-	@echo ">>> [x64-gen] cross-checking the raw Rust x64 encoder against OCaml"
-	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" python3 $(X64_RUST_VALIDATION) encoder
+	@echo ">>> [x64-gen] generating $(X) random x64 instructions with seed $(SEED)"
+	@env -u RUSTC_BOOTSTRAP $(CARGO) run --quiet --manifest-path $(X64_INS_GEN)/Cargo.toml -- $(X) $(SEED)
+	@echo ">>> [x64-gen] encoding instructions with the Rust x64 encoder"
+	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" python3 $(X64_RUST_VALIDATION) encode
 	@echo ">>> [x64-gen] generating register and memory maps"
-	@env -u RUSTC_BOOTSTRAP $(CARGO) run --quiet --manifest-path $(X64_MAP_GEN)/Cargo.toml
+	@env -u RUSTC_BOOTSTRAP $(CARGO) run --quiet --manifest-path $(X64_MAP_GEN)/Cargo.toml -- $(SEED)
 
-# Stage 2 retains the established CPU and fixed OCaml checks, then observes the
-# raw Rust x64_step_test through glue installed only in an _build crate copy.
+# Run the native, OCaml, and Stage-1 Rust steppers on the shared corpus.
 x64-test: x64-rust-export
 	@echo ">>> [x64-test] running cases on the real x64 CPU stepper"
 	@cd "$(X64_STEPPER_C)" && $(CC) -O2 -Wall -Wextra -o ptrace_exec ptrace_exec.c $(X64_JANSSON_LIBS) && ./ptrace_exec
@@ -478,7 +476,13 @@ x64-test: x64-rust-export
 	@echo ">>> [x64-test] running the raw Rust semantics observation against the CPU"
 	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" python3 $(X64_RUST_VALIDATION) stepper
 
-x64: x64-gen x64-test
+# Run the Stage-2 stepper on exactly the same corpus.
+x64-stage2-test: x64-rust-export
+	@echo ">>> [x64-test] running the Stage-2 Rust semantics observation against the CPU"
+	@PYTHONDONTWRITEBYTECODE=1 CARGO="$(CARGO)" REBUILD="$(REBUILD)" RUST_TOOLCHAIN="$(RUST_TOOLCHAIN)" X64_RUST_EXPORT_ROOT="$(CURDIR)/test/x64/theory/stage2/x64_generator_bigint" X64_RUST_BUILD_DIR="$(CURDIR)/test/x64/x64-validation/_build/stage2-full" python3 $(X64_RUST_VALIDATION) stepper
+
+x64:
+	+@PYTHONDONTWRITEBYTECODE=1 MAKE="$(MAKE)" python3 $(X64_RUN)
 
 #### Maintenance ####
 
@@ -517,11 +521,12 @@ help:
 	@echo "Validation:"
 	@echo "  macro_sbpf [REBUILD=1]            Run program-level SBPF validation"
 	@echo "  micro_sbpf [REBUILD=1]            Run instruction-level SBPF validation"
-	@echo "  micro_sbpf_gen [X=100]            Generate SBPF instruction test data"
-	@echo "  x64-rust-export [REBUILD=1]       Export and compile raw x64 Rust crates"
-	@echo "  x64-gen [X64_COUNT=10000]         Generate and cross-check x64 inputs"
-	@echo "  x64-test                          Compare x64 semantics with the CPU"
-	@echo "  x64                               Run x64-gen and x64-test"
+	@echo "  micro_sbpf_gen [X=10000]          Generate SBPF instruction test data"
+	@echo "  x64-rust-export [REBUILD=1]       Export and compile both x64 Rust stages"
+	@echo "  x64-gen [X=10000] [SEED=<n>]      Generate and cross-check x64 inputs"
+	@echo "  x64-test                          Compare OCaml and Stage 1 with the CPU"
+	@echo "  x64-stage2-test                   Compare Stage 2 with the CPU"
+	@echo "  x64 [X=10000] [SEED=<n>]          Run complete x64 differential validation"
 	@echo ""
 	@echo "Evaluation:"
 	@echo "  loc / kloc / rq1-timings"
